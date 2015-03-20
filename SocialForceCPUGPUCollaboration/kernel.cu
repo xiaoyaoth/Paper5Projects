@@ -1,3 +1,7 @@
+
+#include "cuda_runtime.h"
+#include "device_launch_parameters.h"
+
 /* W B Langdon at MUN 10 May 2007
 * Program to demonstarte use of OpenGL's glDrawPixels
 */
@@ -63,7 +67,7 @@ struct neighborList {
 	int *subjIdList;
 };
 
-#define NBOR_LIST_SIZE 128
+#define SIZE_NBOR_LIST 128
 #define NUM_AGENT 1024
 #define DOT_R 1
 #define NUM_CELL_DIM 8
@@ -77,6 +81,7 @@ int* cidEnd = new int[NUM_CELL];
 int* agentCids = new int[NUM_AGENT];
 int* agentIds = new int[NUM_AGENT];
 neighborList nborList;
+neighborList nborListDev;
 
 FILE *fpOut;
 
@@ -191,7 +196,7 @@ void neighborSearching() {
 		Agent *agent = agentList[agentId];
 		double posX = agent->data->x;
 		double posY = agent->data->y;
-		int cellXMin = (posX - RANGE) * NUM_CELL_DIM; 
+		int cellXMin = (posX - RANGE) * NUM_CELL_DIM;
 		int cellXMax = (posX + RANGE) * NUM_CELL_DIM;
 		int cellYMin = (posY - RANGE) * NUM_CELL_DIM;
 		int cellYMax = (posY + RANGE) * NUM_CELL_DIM;
@@ -201,16 +206,19 @@ void neighborSearching() {
 		cellYMax = cellYMax >= NUM_CELL_DIM ? NUM_CELL_DIM - 1 : cellYMax;
 
 		fprintf(fpOut, "(%f, %f), (%d, %d, %d, %d)\n", posX, posY, cellXMin, cellXMax, cellYMin, cellYMax);
-		for (int j = cellYMin; j <= cellYMax; j++) {
-			for (int i = cellXMin; i <= cellXMax; i++) {
-				int cellId = util::zcode(i, j);
+		for (int cidY = cellYMin; cidY <= cellYMax; cidY++) {
+			for (int cidX = cellXMin; cidX <= cellXMax; cidX++) {
+				int cellId = util::zcode(cidX, cidY);
 				for (int k = cidStart[cellId]; k < cidEnd[cellId]; k++) {
 					Agent *other = agentList[agentIds[k]];
 					double dist = agent->calDist(other);
 					fprintf(fpOut, "(%f, %f, %f)", other->data->x, other->data->y, dist);
 					fflush(fpOut);
+
 					if (dist < RANGE) {
 						fprintf(fpOut, " Y");
+						fflush(fpOut);
+
 						nborList.xList[nborCount] = other->data->x;
 						nborList.yList[nborCount] = other->data->y;
 						nborList.velXList[nborCount] = other->data->velX;
@@ -219,9 +227,19 @@ void neighborSearching() {
 						nborList.goalYList[nborCount] = other->data->goalY;
 						nborList.v0List[nborCount] = other->data->v0;
 						nborList.massList[nborCount] = other->data->mass;
+						nborList.nborIdList[nborCount] = agentIds[k];
+						nborList.subjIdList[nborCount] = agentId;
 						nborCount++;
+
+						if (nborCount == SIZE_NBOR_LIST) {
+							cudaMemcpy(nborListDev.actualData, nborList.actualData, sizeof(double) * SIZE_NBOR_LIST * 8, cudaMemcpyHostToDevice);
+							fprintf(fpOut, "\n one batch");
+							fflush(fpOut);
+							nborCount = 0;
+						}
 					}
 					fprintf(fpOut, "\n");
+					fflush(fpOut);
 				}
 			}
 		}
@@ -229,24 +247,27 @@ void neighborSearching() {
 }
 
 int main(int argc, char** argv) {
+	//Initialization
 	srand(0);
 	agentList = (Agent**)malloc(sizeof(Agent*) * NUM_AGENT);
 	for (int i = 0; i < NUM_AGENT; i++) {
 		agentList[i] = new Agent();
 	}
-	nborList.actualData = (double*)malloc(sizeof(double) * NBOR_LIST_SIZE * 8);
+	nborList.actualData = (double*)malloc(sizeof(double) * SIZE_NBOR_LIST * 8);
 	nborList.xList = &nborList.actualData[0];
-	nborList.yList = &nborList.actualData[NBOR_LIST_SIZE * 1];
-	nborList.velXList = &nborList.actualData[NBOR_LIST_SIZE * 2];
-	nborList.velYList = &nborList.actualData[NBOR_LIST_SIZE * 3];
-	nborList.goalXList = &nborList.actualData[NBOR_LIST_SIZE * 4];
-	nborList.goalYList = &nborList.actualData[NBOR_LIST_SIZE * 5];
-	nborList.v0List = &nborList.actualData[NBOR_LIST_SIZE * 6];
-	nborList.massList = &nborList.actualData[NBOR_LIST_SIZE * 7];
+	nborList.yList = &nborList.actualData[SIZE_NBOR_LIST * 1];
+	nborList.velXList = &nborList.actualData[SIZE_NBOR_LIST * 2];
+	nborList.velYList = &nborList.actualData[SIZE_NBOR_LIST * 3];
+	nborList.goalXList = &nborList.actualData[SIZE_NBOR_LIST * 4];
+	nborList.goalYList = &nborList.actualData[SIZE_NBOR_LIST * 5];
+	nborList.v0List = &nborList.actualData[SIZE_NBOR_LIST * 6];
+	nborList.massList = &nborList.actualData[SIZE_NBOR_LIST * 7];
 
-#define NUM_ELEM 10
+	cudaMalloc((void**)&nborListDev.actualData, sizeof(double) * SIZE_NBOR_LIST * 8);
+
 	fpOut = fopen("output.txt", "w");
 
+	// Visualization
 	glutInit(&argc, argv);
 
 	glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH);
