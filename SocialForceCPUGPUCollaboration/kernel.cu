@@ -53,8 +53,18 @@ public:
 	}
 };
 
+struct subjectList {
+	double *xList;
+	double *yList;
+	double *velXList;
+	double *velYList;
+	double *goalXList;
+	double *goalYList;
+	double *v0List;
+	double *massList;
+};
+
 struct neighborList {
-	double *actualData;
 	double *xList;
 	double *yList;
 	double *velXList;
@@ -67,11 +77,22 @@ struct neighborList {
 	int *subjIdList;
 };
 
+struct blockIndices {
+	int numNbor;
+	int numSubj;
+	int firstSubj;
+};
+
 #define SIZE_NBOR_LIST 128
+#define SIZE_SUBJ_LIST 32
 #define NUM_AGENT 1024
 #define DOT_R 1
 #define NUM_CELL_DIM 8
 #define NUM_CELL (NUM_CELL_DIM * NUM_CELL_DIM)
+#define NUM_BLOCK 1
+#define SIZE_BLOCK SIZE_NBOR_LIST
+#define SIZE_NBOR_DATA 18
+#define SIZE_SUBJ_DATA 16
 unsigned int window_width = 512, window_height = 512;
 const int size = window_width*window_height;
 Agent **agentList;
@@ -80,41 +101,82 @@ int* cidStart = new int[NUM_CELL];
 int* cidEnd = new int[NUM_CELL];
 int* agentCids = new int[NUM_AGENT];
 int* agentIds = new int[NUM_AGENT];
-neighborList nborList;
-neighborList nborListDev;
+blockIndices bi;
+blockIndices* biDev;
+int* nborData;
+int* nborDataDev;
+int *subjData;
+int *subjDataDev;
 
 FILE *fpOut;
 
-void display()
-{
-	//Create some nice colours (3 floats per pixel) from data -10..+10
-	memset(pixels, 0, size * 3 * sizeof(float));
-	for (int i = 0; i < NUM_AGENT; i++) {
-		//colour(10.0 - ((i*20.0) / size), &pixels[i * 3]);
-		int canvasX = agentList[i]->data->x * window_width;
-		int canvasY = agentList[i]->data->y * window_height;
+__global__ void agentExecKernel(int *neighborDataDev, int *subjDataDev, blockIndices *biDev) {
+	extern __shared__ int smem[];
+	// load neighbor and subject indices
+	int numNbor = biDev[blockIdx.x].numNbor;
+	int numSubj = biDev[blockIdx.x].numSubj;
+	int firstSubj = biDev[blockIdx.x].firstSubj; // the subject id of the first entry in neighbor list
 
-		for (int i = canvasX - DOT_R; i < canvasX + DOT_R; i++) {
-			for (int j = canvasY - DOT_R; j < canvasY + DOT_R; j++) {
-				if (i >= 0 && i < window_width && j >= 0 && j < window_height) {
-					int idx = j * window_width + i;
-					pixels[idx * 3] = 1;
-					pixels[idx * 3 + 1] = 1;
-					pixels[idx * 3 + 2] = 1;
-				}
-			}
-		}
+	// load subject data into shared memory
+	int offset = 0;
+	while (offset + threadIdx.x < SIZE_SUBJ_LIST * SIZE_SUBJ_DATA) {
+		smem[offset + threadIdx.x] = subjDataDev[offset + threadIdx.x];
+		offset += blockDim.x;
 	}
+	__syncthreads();
 
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	// set subject agent update zone in smem
+	//double *fSumX = (double*)&smem[SIZE_SUBJ_LIST * SIZE_SUBJ_DATA]; //update zone for prop 1 follows reading zone
+	//double *fSumY = (double*)&smem[SIZE_SUBJ_LIST * SIZE_SUBJ_DATA + SIZE_SUBJ_LIST * 2]; //update zone for prop 1 follows reading zone
 
-	//http://msdn2.microsoft.com/en-us/library/ms537062.aspx
-	//glDrawPixels writes a block of pixels to the framebuffer.
+	int *fSumX = &smem[SIZE_SUBJ_LIST * SIZE_SUBJ_DATA]; //update zone for prop 1 follows reading zone
+	int *fSumY = &smem[SIZE_SUBJ_LIST * SIZE_SUBJ_DATA + SIZE_SUBJ_LIST]; //update zone for prop 1 follows reading zone
 
-	glDrawPixels(window_width, window_height, GL_RGB, GL_FLOAT, pixels);
+	offset = 0;
+	while (offset + threadIdx.x < SIZE_SUBJ_LIST) {
+		fSumX[offset + threadIdx.x] = 10;
+		fSumY[offset + threadIdx.x] = 20;
+		offset += blockDim.x;
+	}
+	__syncthreads();
 
-	glutSwapBuffers();
-	glutPostRedisplay();
+	// obtain head address of neighbor data;
+	double *xList = (double*)&neighborDataDev[0];
+	double *yList = (double*)&neighborDataDev[SIZE_NBOR_LIST * 2];
+	double *velXList = (double*)&neighborDataDev[SIZE_NBOR_LIST * 4];
+	double *velYList = (double*)&neighborDataDev[SIZE_NBOR_LIST * 6];
+	double *goalXList = (double*)&neighborDataDev[SIZE_NBOR_LIST * 8];
+	double *goalYList = (double*)&neighborDataDev[SIZE_NBOR_LIST * 10];
+	double *v0List = (double*)&neighborDataDev[SIZE_NBOR_LIST * 12];
+	double *massList = (double*)&neighborDataDev[SIZE_NBOR_LIST * 14];
+	int *nborList = &neighborDataDev[SIZE_NBOR_LIST * 16];
+	int *subjList = &neighborDataDev[SIZE_NBOR_LIST * 17];
+
+	// load neighbor data into register
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+	double x = xList[threadIdx.x];
+	double y = yList[threadIdx.x];
+	double velX = velXList[threadIdx.x];
+	double velY = velYList[threadIdx.x];
+	double goalX = goalXList[threadIdx.x];
+	double goalY = goalYList[threadIdx.x];
+	double v0 = v0List[threadIdx.x];
+	double mass = massList[threadIdx.x];
+	int nbor = nborList[threadIdx.x];
+	int subj = subjList[threadIdx.x];
+
+	//do something with neighbor data
+	double res = x + y + velX + velY + goalX + goalY + v0 + mass;
+
+	//update subject agent data
+	int temp = 1;
+	while (++temp < 1000) {
+		atomicInc((unsigned int*)&fSumX[subj - firstSubj], NUM_AGENT);
+		atomicInc((unsigned int*)&fSumY[subj - firstSubj], NUM_AGENT);
+	}
+	__syncthreads();
+	
+	//printf("%d, %d %f, %f\n", threadIdx.x, subj, fSumX, fSumY);
 }
 
 namespace util {
@@ -185,17 +247,53 @@ void neighborSearching() {
 		}
 	}
 
-	for (int i = 0; i < NUM_CELL; i++)
-		printf("(%d,%d)", cidStart[i], cidEnd[i]);
+	// manipulate nborData with nborList structure;
+	neighborList nborList;
+	nborList.xList = (double*)&nborData[0];
+	nborList.yList = (double*)&nborData[SIZE_NBOR_LIST * 2];
+	nborList.velXList = (double*)&nborData[SIZE_NBOR_LIST * 4];
+	nborList.velYList = (double*)&nborData[SIZE_NBOR_LIST * 6];
+	nborList.goalXList = (double*)&nborData[SIZE_NBOR_LIST * 8];
+	nborList.goalYList = (double*)&nborData[SIZE_NBOR_LIST * 10];
+	nborList.v0List = (double*)&nborData[SIZE_NBOR_LIST * 12];
+	nborList.massList = (double*)&nborData[SIZE_NBOR_LIST * 14];
+	nborList.nborIdList = &nborData[SIZE_NBOR_LIST * 16];
+	nborList.subjIdList = &nborData[SIZE_NBOR_LIST * 17];
+
+	subjectList subjList;
+	subjList.xList = (double*)&subjData[0];
+	subjList.yList = (double*)&subjData[SIZE_SUBJ_LIST * 2];
+	subjList.velXList = (double*)&subjData[SIZE_SUBJ_LIST * 4];
+	subjList.velYList = (double*)&subjData[SIZE_SUBJ_LIST * 6];
+	subjList.goalXList = (double*)&subjData[SIZE_SUBJ_LIST * 8];
+	subjList.goalYList = (double*)&subjData[SIZE_SUBJ_LIST * 10];
+	subjList.v0List = (double*)&subjData[SIZE_SUBJ_LIST * 12];
+	subjList.massList = (double*)&subjData[SIZE_SUBJ_LIST * 14];
 
 	// simulating generate neighbor list
 #define RANGE 0.05 //environment dim ranging from 0 ~ 1
 	int nborCount = 0;
+	int nborCountSettled = 0;
+	bi.firstSubj = 0;
 	for (int i = 0; i < NUM_AGENT; i++) {
+		bool interrupted = false;
+
+		// pick agent based on sorted order, and get its bounding box
 		int agentId = agentIds[i];
-		Agent *agent = agentList[agentId];
-		double posX = agent->data->x;
-		double posY = agent->data->y;
+		Agent *subj = agentList[agentId];
+		double posX = subj->data->x;
+		double posY = subj->data->y;
+
+		int j = i - bi.firstSubj;
+		subjList.xList[j] = subj->data->x;
+		subjList.yList[j] = subj->data->y;
+		subjList.velXList[j] = subj->data->velX;
+		subjList.velYList[j] = subj->data->velY;
+		subjList.goalXList[j] = subj->data->goalX;
+		subjList.goalYList[j] = subj->data->goalY;
+		subjList.v0List[j] = subj->data->v0;
+		subjList.massList[j] = subj->data->mass;
+
 		int cellXMin = (posX - RANGE) * NUM_CELL_DIM;
 		int cellXMax = (posX + RANGE) * NUM_CELL_DIM;
 		int cellYMin = (posY - RANGE) * NUM_CELL_DIM;
@@ -204,46 +302,107 @@ void neighborSearching() {
 		cellXMax = cellXMax >= NUM_CELL_DIM ? NUM_CELL_DIM - 1 : cellXMax;
 		cellYMin = cellYMin < 0 ? 0 : cellYMin;
 		cellYMax = cellYMax >= NUM_CELL_DIM ? NUM_CELL_DIM - 1 : cellYMax;
+		fprintf(fpOut, "%d, %d, (%f, %f), (%d, %d, %d, %d)\n", i, agentId, posX, posY, cellXMin, cellXMax, cellYMin, cellYMax);
 
-		fprintf(fpOut, "(%f, %f), (%d, %d, %d, %d)\n", posX, posY, cellXMin, cellXMax, cellYMin, cellYMax);
+		// iterate bounding box
 		for (int cidY = cellYMin; cidY <= cellYMax; cidY++) {
 			for (int cidX = cellXMin; cidX <= cellXMax; cidX++) {
 				int cellId = util::zcode(cidX, cidY);
 				for (int k = cidStart[cellId]; k < cidEnd[cellId]; k++) {
-					Agent *other = agentList[agentIds[k]];
-					double dist = agent->calDist(other);
-					fprintf(fpOut, "(%f, %f, %f)", other->data->x, other->data->y, dist);
+					// fill neighbor list
+					Agent *nbor = agentList[agentIds[k]];
+					double dist = subj->calDist(nbor);
+					fprintf(fpOut, "(%d, %d, %f, %f, %f)", agentId, agentIds[k], nbor->data->x, nbor->data->y, dist);
 					fflush(fpOut);
 
 					if (dist < RANGE) {
+						// detect if neighbor list is full
+						if (nborCount == SIZE_NBOR_LIST) {
+							interrupted = true;
+							break;
+						}
 						fprintf(fpOut, " Y");
 						fflush(fpOut);
 
-						nborList.xList[nborCount] = other->data->x;
-						nborList.yList[nborCount] = other->data->y;
-						nborList.velXList[nborCount] = other->data->velX;
-						nborList.velYList[nborCount] = other->data->velY;
-						nborList.goalXList[nborCount] = other->data->goalX;
-						nborList.goalYList[nborCount] = other->data->goalY;
-						nborList.v0List[nborCount] = other->data->v0;
-						nborList.massList[nborCount] = other->data->mass;
+						nborList.xList[nborCount] = nbor->data->x;
+						nborList.yList[nborCount] = nbor->data->y;
+						nborList.velXList[nborCount] = nbor->data->velX;
+						nborList.velYList[nborCount] = nbor->data->velY;
+						nborList.goalXList[nborCount] = nbor->data->goalX;
+						nborList.goalYList[nborCount] = nbor->data->goalY;
+						nborList.v0List[nborCount] = nbor->data->v0;
+						nborList.massList[nborCount] = nbor->data->mass;
 						nborList.nborIdList[nborCount] = agentIds[k];
-						nborList.subjIdList[nborCount] = agentId;
+						nborList.subjIdList[nborCount] = i;
 						nborCount++;
-
-						if (nborCount == SIZE_NBOR_LIST) {
-							cudaMemcpy(nborListDev.actualData, nborList.actualData, sizeof(double) * SIZE_NBOR_LIST * 8, cudaMemcpyHostToDevice);
-							fprintf(fpOut, "\n one batch");
-							fflush(fpOut);
-							nborCount = 0;
-						}
 					}
 					fprintf(fpOut, "\n");
 					fflush(fpOut);
 				}
 			}
 		}
+
+		// nborCount is temporary count, nborCountSettled is the number to be processed
+		if (!interrupted)
+			nborCountSettled = nborCount;
+		else {
+			// restore nborCount
+			bi.numNbor = nborCountSettled;
+			bi.numSubj = i - bi.firstSubj;
+
+			// perform GPU processing
+			cudaMemcpyAsync(nborDataDev, nborData, sizeof(int) * SIZE_NBOR_LIST * SIZE_NBOR_DATA, cudaMemcpyHostToDevice);
+			cudaMemcpyAsync(subjDataDev, subjData, sizeof(int) * SIZE_SUBJ_LIST * SIZE_SUBJ_DATA, cudaMemcpyHostToDevice);
+			cudaMemcpyAsync(biDev, &bi, sizeof(blockIndices), cudaMemcpyHostToDevice);
+			fprintf(fpOut, "\n one batch");
+			fflush(fpOut);
+
+			size_t modZoneSize = sizeof(int) * SIZE_SUBJ_LIST * SIZE_SUBJ_DATA;
+			size_t smemSize = sizeof(int) * SIZE_SUBJ_DATA * SIZE_SUBJ_LIST + modZoneSize;
+			agentExecKernel<<<NUM_BLOCK, SIZE_BLOCK, smemSize>>>(nborDataDev, subjDataDev, biDev);
+
+			cudaError_t error = cudaGetLastError();
+			printf("CUDA Error: %s\n", cudaGetErrorString(error));
+
+			//rollback the processing of one agent and
+			bi.firstSubj = i;
+			nborCount = 0;
+			i--;
+		}
 	}
+}
+
+void display()
+{
+	//Create some nice colours (3 floats per pixel) from data -10..+10
+	memset(pixels, 0, size * 3 * sizeof(float));
+	for (int i = 0; i < NUM_AGENT; i++) {
+		//colour(10.0 - ((i*20.0) / size), &pixels[i * 3]);
+		int canvasX = agentList[i]->data->x * window_width;
+		int canvasY = agentList[i]->data->y * window_height;
+
+		for (int i = canvasX - DOT_R; i < canvasX + DOT_R; i++) {
+			for (int j = canvasY - DOT_R; j < canvasY + DOT_R; j++) {
+				if (i >= 0 && i < window_width && j >= 0 && j < window_height) {
+					int idx = j * window_width + i;
+					pixels[idx * 3] = 1;
+					pixels[idx * 3 + 1] = 1;
+					pixels[idx * 3 + 2] = 1;
+				}
+			}
+		}
+	}
+
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	//http://msdn2.microsoft.com/en-us/library/ms537062.aspx
+	//glDrawPixels writes a block of pixels to the framebuffer.
+
+	glDrawPixels(window_width, window_height, GL_RGB, GL_FLOAT, pixels);
+
+	glutSwapBuffers();
+	glutPostRedisplay();
+
 }
 
 int main(int argc, char** argv) {
@@ -253,17 +412,12 @@ int main(int argc, char** argv) {
 	for (int i = 0; i < NUM_AGENT; i++) {
 		agentList[i] = new Agent();
 	}
-	nborList.actualData = (double*)malloc(sizeof(double) * SIZE_NBOR_LIST * 8);
-	nborList.xList = &nborList.actualData[0];
-	nborList.yList = &nborList.actualData[SIZE_NBOR_LIST * 1];
-	nborList.velXList = &nborList.actualData[SIZE_NBOR_LIST * 2];
-	nborList.velYList = &nborList.actualData[SIZE_NBOR_LIST * 3];
-	nborList.goalXList = &nborList.actualData[SIZE_NBOR_LIST * 4];
-	nborList.goalYList = &nborList.actualData[SIZE_NBOR_LIST * 5];
-	nborList.v0List = &nborList.actualData[SIZE_NBOR_LIST * 6];
-	nborList.massList = &nborList.actualData[SIZE_NBOR_LIST * 7];
+	cudaMallocHost((void**)&nborData, sizeof(int) * SIZE_NBOR_LIST * SIZE_NBOR_DATA);
+	cudaMallocHost((void**)&subjData, sizeof(int) * SIZE_SUBJ_DATA * SIZE_SUBJ_LIST);
 
-	cudaMalloc((void**)&nborListDev.actualData, sizeof(double) * SIZE_NBOR_LIST * 8);
+	cudaMalloc((void**)&nborDataDev, sizeof(int) * SIZE_NBOR_LIST * SIZE_NBOR_DATA);
+	cudaMalloc((void**)&subjDataDev, sizeof(int) * SIZE_SUBJ_LIST * SIZE_SUBJ_DATA);
+	cudaMalloc((void**)&biDev, sizeof(blockIndices));
 
 	fpOut = fopen("output.txt", "w");
 
@@ -285,10 +439,17 @@ int main(int argc, char** argv) {
 	glClearColor(0.0, 0.0, 0.0, 1.0);
 	//glPointSize(2);
 
-	while (true) {
+	int tick = 0;
+	while (tick++ < 3) {
 		for (int i = 0; i < NUM_AGENT; i++) {
 			agentList[i]->data->x = (double)rand() / RAND_MAX;
 			agentList[i]->data->y = (double)rand() / RAND_MAX;
+			agentList[i]->data->velX = -1;
+			agentList[i]->data->velY = -1;
+			agentList[i]->data->goalX = -1;
+			agentList[i]->data->goalY = -1;
+			agentList[i]->data->v0 = -1;
+			agentList[i]->data->mass = -1;
 		}
 		neighborSearching();
 		glutMainLoopEvent();
