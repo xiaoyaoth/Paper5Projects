@@ -275,6 +275,7 @@ void neighborSearching() {
 	int nborCount = 0;
 	int nborCountSettled = 0;
 	bi.firstSubj = 0;
+
 	for (int i = 0; i < NUM_AGENT; i++) {
 		bool interrupted = false;
 
@@ -351,9 +352,9 @@ void neighborSearching() {
 			bi.numSubj = i - bi.firstSubj;
 
 			// perform GPU processing
-			cudaMemcpyAsync(nborDataDev, nborData, sizeof(int) * SIZE_NBOR_LIST * SIZE_NBOR_DATA, cudaMemcpyHostToDevice);
-			cudaMemcpyAsync(subjDataDev, subjData, sizeof(int) * SIZE_SUBJ_LIST * SIZE_SUBJ_DATA, cudaMemcpyHostToDevice);
-			cudaMemcpyAsync(biDev, &bi, sizeof(blockIndices), cudaMemcpyHostToDevice);
+			cudaMemcpy(nborDataDev, nborData, sizeof(int) * SIZE_NBOR_LIST * SIZE_NBOR_DATA, cudaMemcpyHostToDevice);
+			cudaMemcpy(subjDataDev, subjData, sizeof(int) * SIZE_SUBJ_LIST * SIZE_SUBJ_DATA, cudaMemcpyHostToDevice);
+			cudaMemcpy(biDev, &bi, sizeof(blockIndices), cudaMemcpyHostToDevice);
 			fprintf(fpOut, "\n one batch");
 			fflush(fpOut);
 
