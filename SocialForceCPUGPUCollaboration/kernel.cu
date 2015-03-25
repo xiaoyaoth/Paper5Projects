@@ -83,6 +83,14 @@ struct blockIndices {
 	int firstSubj;
 };
 
+struct GPUBatch {
+	cudaStream_t stream;
+	int *nborData;
+	int *nborDataDev;
+	int *subjData;
+	int *subjDataDev;
+};
+
 #define SIZE_NBOR_LIST 128
 #define SIZE_SUBJ_LIST 32
 #define NUM_AGENT 1024
@@ -93,6 +101,7 @@ struct blockIndices {
 #define SIZE_BLOCK SIZE_NBOR_LIST
 #define SIZE_NBOR_DATA 18
 #define SIZE_SUBJ_DATA 16
+#define NUM_GPU_BATCH 2
 unsigned int window_width = 512, window_height = 512;
 const int size = window_width*window_height;
 Agent **agentList;
@@ -101,21 +110,24 @@ int* cidStart = new int[NUM_CELL];
 int* cidEnd = new int[NUM_CELL];
 int* agentCids = new int[NUM_AGENT];
 int* agentIds = new int[NUM_AGENT];
+/*
 blockIndices bi;
 blockIndices* biDev;
 int* nborData;
 int* nborDataDev;
 int *subjData;
 int *subjDataDev;
+*/
+GPUBatch batches[NUM_GPU_BATCH];
 
 FILE *fpOut;
 
-__global__ void agentExecKernel(int *neighborDataDev, int *subjDataDev, blockIndices *biDev) {
+__global__ void agentExecKernel(int *neighborDataDev, int *subjDataDev, blockIndices bi) {
 	extern __shared__ int smem[];
 	// load neighbor and subject indices
-	int numNbor = biDev[blockIdx.x].numNbor;
-	int numSubj = biDev[blockIdx.x].numSubj;
-	int firstSubj = biDev[blockIdx.x].firstSubj; // the subject id of the first entry in neighbor list
+	int numNbor = bi.numNbor;
+	int numSubj = bi.numSubj;
+	int firstSubj = bi.firstSubj; // the subject id of the first entry in neighbor list
 
 	// load subject data into shared memory
 	int offset = 0;
@@ -225,27 +237,15 @@ namespace util {
 	}
 };
 
-void neighborSearching() {
-	// simulate agent moving
-	for (int i = 0; i < NUM_AGENT; i++) {
-		agentIds[i] = i;
-		int cidX = agentList[i]->data->x * NUM_CELL_DIM;
-		int cidY = agentList[i]->data->y * NUM_CELL_DIM;
-		agentCids[i] = util::zcode(cidX, cidY);
-	}
-
-	// sorting agent ptr based on cell id
-	util::quickSort(agentCids, 0, NUM_AGENT, agentIds);
-
-	// construct cidStart and cidEnd
-	for (int i = 0; i < NUM_AGENT; i++) {
-		int cidPrev = agentCids[i];
-		int cidNext = agentCids[(i + 1) % NUM_AGENT];
-		if (cidPrev != cidNext) {
-			cidEnd[cidPrev] = i + 1;
-			cidStart[cidNext] = (i + 1) % NUM_AGENT;
-		}
-	}
+void neighborSearching(GPUBatch *batches) {
+	// create batch data structure alias
+	int batchId = 0;
+	GPUBatch batch = batches[batchId];
+	int *nborData = batch.nborData;
+	int *nborDataDev = batch.nborDataDev;
+	int *subjData = batch.subjData;
+	int *subjDataDev = batch.subjDataDev;
+	blockIndices bi;
 
 	// manipulate nborData with nborList structure;
 	neighborList nborList;
@@ -269,6 +269,27 @@ void neighborSearching() {
 	subjList.goalYList = (double*)&subjData[SIZE_SUBJ_LIST * 10];
 	subjList.v0List = (double*)&subjData[SIZE_SUBJ_LIST * 12];
 	subjList.massList = (double*)&subjData[SIZE_SUBJ_LIST * 14];
+
+	// simulate agent moving
+	for (int i = 0; i < NUM_AGENT; i++) {
+		agentIds[i] = i;
+		int cidX = agentList[i]->data->x * NUM_CELL_DIM;
+		int cidY = agentList[i]->data->y * NUM_CELL_DIM;
+		agentCids[i] = util::zcode(cidX, cidY);
+	}
+
+	// sorting agent ptr based on cell id
+	util::quickSort(agentCids, 0, NUM_AGENT, agentIds);
+
+	// construct cidStart and cidEnd
+	for (int i = 0; i < NUM_AGENT; i++) {
+		int cidPrev = agentCids[i];
+		int cidNext = agentCids[(i + 1) % NUM_AGENT];
+		if (cidPrev != cidNext) {
+			cidEnd[cidPrev] = i + 1;
+			cidStart[cidNext] = (i + 1) % NUM_AGENT;
+		}
+	}
 
 	// simulating generate neighbor list
 #define RANGE 0.05 //environment dim ranging from 0 ~ 1
@@ -352,23 +373,52 @@ void neighborSearching() {
 			bi.numSubj = i - bi.firstSubj;
 
 			// perform GPU processing
-			cudaMemcpy(nborDataDev, nborData, sizeof(int) * SIZE_NBOR_LIST * SIZE_NBOR_DATA, cudaMemcpyHostToDevice);
-			cudaMemcpy(subjDataDev, subjData, sizeof(int) * SIZE_SUBJ_LIST * SIZE_SUBJ_DATA, cudaMemcpyHostToDevice);
-			cudaMemcpy(biDev, &bi, sizeof(blockIndices), cudaMemcpyHostToDevice);
+			cudaStreamSynchronize(batch.stream);
+			cudaMemcpyAsync(nborDataDev, nborData, sizeof(int) * SIZE_NBOR_LIST * SIZE_NBOR_DATA, cudaMemcpyHostToDevice, batch.stream);
+			cudaMemcpyAsync(subjDataDev, subjData, sizeof(int) * SIZE_SUBJ_LIST * SIZE_SUBJ_DATA, cudaMemcpyHostToDevice, batch.stream);
 			fprintf(fpOut, "\n one batch");
 			fflush(fpOut);
 
 			size_t modZoneSize = sizeof(int) * SIZE_SUBJ_LIST * SIZE_SUBJ_DATA;
 			size_t smemSize = sizeof(int) * SIZE_SUBJ_DATA * SIZE_SUBJ_LIST + modZoneSize;
-			agentExecKernel<<<NUM_BLOCK, SIZE_BLOCK, smemSize>>>(nborDataDev, subjDataDev, biDev);
+			agentExecKernel<<<NUM_BLOCK, SIZE_BLOCK, smemSize, batch.stream>>>(nborDataDev, subjDataDev, bi);
 
 			cudaError_t error = cudaGetLastError();
 			printf("CUDA Error: %s\n", cudaGetErrorString(error));
 
-			//rollback the processing of one agent and
+			//rollback the processing of one agent, process another batch
 			bi.firstSubj = i;
 			nborCount = 0;
 			i--;
+
+			// create batch data structure alias
+			batchId = (++batchId) % NUM_GPU_BATCH;
+			batch = batches[batchId];
+			nborData = batch.nborData;
+			nborDataDev = batch.nborDataDev;
+			subjData = batch.subjData;
+			subjDataDev = batch.subjDataDev;
+
+			// manipulate nborData with nborList structure;
+			nborList.xList = (double*)&nborData[0];
+			nborList.yList = (double*)&nborData[SIZE_NBOR_LIST * 2];
+			nborList.velXList = (double*)&nborData[SIZE_NBOR_LIST * 4];
+			nborList.velYList = (double*)&nborData[SIZE_NBOR_LIST * 6];
+			nborList.goalXList = (double*)&nborData[SIZE_NBOR_LIST * 8];
+			nborList.goalYList = (double*)&nborData[SIZE_NBOR_LIST * 10];
+			nborList.v0List = (double*)&nborData[SIZE_NBOR_LIST * 12];
+			nborList.massList = (double*)&nborData[SIZE_NBOR_LIST * 14];
+			nborList.nborIdList = &nborData[SIZE_NBOR_LIST * 16];
+			nborList.subjIdList = &nborData[SIZE_NBOR_LIST * 17];
+
+			subjList.xList = (double*)&subjData[0];
+			subjList.yList = (double*)&subjData[SIZE_SUBJ_LIST * 2];
+			subjList.velXList = (double*)&subjData[SIZE_SUBJ_LIST * 4];
+			subjList.velYList = (double*)&subjData[SIZE_SUBJ_LIST * 6];
+			subjList.goalXList = (double*)&subjData[SIZE_SUBJ_LIST * 8];
+			subjList.goalYList = (double*)&subjData[SIZE_SUBJ_LIST * 10];
+			subjList.v0List = (double*)&subjData[SIZE_SUBJ_LIST * 12];
+			subjList.massList = (double*)&subjData[SIZE_SUBJ_LIST * 14];
 		}
 	}
 }
@@ -413,12 +463,15 @@ int main(int argc, char** argv) {
 	for (int i = 0; i < NUM_AGENT; i++) {
 		agentList[i] = new Agent();
 	}
-	cudaMallocHost((void**)&nborData, sizeof(int) * SIZE_NBOR_LIST * SIZE_NBOR_DATA);
-	cudaMallocHost((void**)&subjData, sizeof(int) * SIZE_SUBJ_DATA * SIZE_SUBJ_LIST);
 
-	cudaMalloc((void**)&nborDataDev, sizeof(int) * SIZE_NBOR_LIST * SIZE_NBOR_DATA);
-	cudaMalloc((void**)&subjDataDev, sizeof(int) * SIZE_SUBJ_LIST * SIZE_SUBJ_DATA);
-	cudaMalloc((void**)&biDev, sizeof(blockIndices));
+	for (int i = 0; i < NUM_GPU_BATCH; i++) {
+		cudaStreamCreate(&batches[i].stream);
+		cudaMallocHost((void**)&batches[i].nborData, sizeof(int) * SIZE_NBOR_LIST * SIZE_NBOR_DATA);
+		cudaMallocHost((void**)&batches[i].subjData, sizeof(int) * SIZE_SUBJ_DATA * SIZE_SUBJ_LIST);
+		cudaMalloc((void**)&batches[i].nborDataDev, sizeof(int) * SIZE_NBOR_LIST * SIZE_NBOR_DATA);
+		cudaMalloc((void**)&batches[i].subjDataDev, sizeof(int) * SIZE_SUBJ_LIST * SIZE_SUBJ_DATA);
+
+	}
 
 	fpOut = fopen("output.txt", "w");
 
@@ -452,7 +505,8 @@ int main(int argc, char** argv) {
 			agentList[i]->data->v0 = -1;
 			agentList[i]->data->mass = -1;
 		}
-		neighborSearching();
+		neighborSearching(batches);
+		cudaDeviceSynchronize();
 		glutMainLoopEvent();
 	}
 	//glutMainLoop();
