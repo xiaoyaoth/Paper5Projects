@@ -3,6 +3,8 @@
 
 #include "gsimcore.cuh"
 #include "gsimvisual.cuh"
+#include <vector>
+using namespace std;
 
 #define DIST(ax, ay, bx, by) sqrt((ax-bx)*(ax-bx)+(ay-by)*(ay-by))
 
@@ -173,14 +175,19 @@ public:
 	uchar4 color;
 
 	SocialForceRoomClone *cloneDev;
+	SocialForceRoomClone *parentClone;
+	vector<SocialForceRoomClone*> childClones;
+
 	int cloneidArray[NUM_GATES];
 	int cloneMasks[NUM_GATES];
 	int cloneLevel;
 	cudaStream_t cloneStream;
+	cudaEvent_t cloneEvent;
 
 	__host__ SocialForceRoomClone(int num, int *cloneidArrayVal) {
-		//cudaStreamCreate(&cloneStream);
-		cloneStream = 0;
+		cudaStreamCreate(&cloneStream);
+		cudaEventCreate(&cloneEvent, cudaEventDisableTiming);
+		//cloneStream = 0;
 
 		agentsHost = new AgentPool<SocialForceRoomAgent, SocialForceRoomAgentData>(0, modelHostParams.MAX_AGENT_NO, sizeof(SocialForceRoomAgentData));
 		util::hostAllocCopyToDevice<AgentPool<SocialForceRoomAgent, SocialForceRoomAgentData> >(agentsHost, &agents);
@@ -227,35 +234,6 @@ __global__ void inspect(SocialForceRoomClone *childClone, SocialForceRoomClone *
 }
 
 class SocialForceRoomModel : public GModel {
-private:
-	void addChild(SocialForceRoomClone **clones, int *queue) {
-		int headIdx = 0;
-		int tailIdx = 1;
-		while(headIdx < tailIdx) {
-			int *cloneid = clones[queue[headIdx]]->cloneidArray;
-			int childCloneId[NUM_GATES];
-
-			int nonZeroPos = -1;
-			for (int i = NUM_GATES - 1; i >= 0; i--) {
-				if (cloneid[i] > 0) {
-					nonZeroPos = i;
-					break;
-				}
-			}
-
-			nonZeroPos++;
-			while (nonZeroPos < NUM_GATES) {
-				for (int i = 1; i < numChoicesPerGate[nonZeroPos]; i++) {
-					memcpy(childCloneId, cloneid, NUM_GATES * sizeof(int));
-					childCloneId[nonZeroPos] = i;
-					int code = encode(childCloneId);
-					queue[tailIdx++] = code;
-				}
-				nonZeroPos++;
-			}
-			headIdx++;
-		}
-	}
 public:
 	GRandom *random, *randomHost;
 	cudaEvent_t timerStart, timerStop;
@@ -263,12 +241,8 @@ public:
 	std::fstream fout;
 #ifdef CLONE
 	SocialForceRoomClone **clones;
+	SocialForceRoomClone *rootClone;
 	int numChoicesPerGate[NUM_GATES];
-	int numClones;
-
-	cudaEvent_t *cloneEvents;
-	int *executionOrder;
-	int *executionLevel;
 #endif
 	__host__ int encode(int *cloneidArrayVal)
 	{
@@ -350,78 +324,27 @@ public:
 		cudaMemcpyToSymbol(gateLocs, &gateLocsHost, NUM_GATES * sizeof(double2));
 
 		//init clone parameters
-		numClones = 1;
 		numChoicesPerGate[0] = NUM_GATE_0_CHOICES;
 		numChoicesPerGate[1] = NUM_GATE_1_CHOICES;
 		numChoicesPerGate[2] = NUM_GATE_2_CHOICES;
-		for(int i = 0; i < NUM_GATES; i++) {
-			numClones *= numChoicesPerGate[i];
-		}
+
+		int numClonesTemp = 1;
+		numClonesTemp *= NUM_GATE_0_CHOICES;
+		numClonesTemp *= NUM_GATE_1_CHOICES;
+		numClonesTemp *= NUM_GATE_2_CHOICES;
 
 		char *outfname = new char[30];
 #ifdef VALIDATE
-		sprintf(outfname, "throughput_clone_%d_%d.txt", numAgentLocal, numClones);
+		sprintf(outfname, "throughput_clone_%d_%d.txt", numAgentLocal, numClonesTemp);
 #endif
 		fout.open(outfname, std::ios::out);
 
-		cloneEvents = new cudaEvent_t[numClones];
-
 		int cloneidArrayValLocal[NUM_GATES];
-		clones = (SocialForceRoomClone **)malloc(numClones * sizeof(SocialForceRoomClone*));
-		for (int i = 0; i < numClones; i++) {
-			this->decode(i, cloneidArrayValLocal);
-			clones[i] = new SocialForceRoomClone(numAgentLocal, cloneidArrayValLocal);
-			cudaEventCreate(&cloneEvents[i], cudaEventDisableTiming);
-		}
-
-		//compute execution order queue
-		executionOrder = new int[numClones];
-		executionOrder[0] = 0;
-		executionLevel = new int[NUM_GATES + 2];
-
-		addChild(clones, executionOrder);
-
-		int level = 0;
-		for (int i = 0; i < NUM_GATES + 1; i++) 
-			executionLevel[i] = 0;
-		if (numClones != 1)
-			executionLevel[NUM_GATES + 1] = numClones;
-
-		for(int i = 0; i < numClones; i++) {
-			int zeroCounter = 0;
-			int idArray[NUM_GATES];
-			decode(executionOrder[i], idArray);
-			for (int j = 0; j < NUM_GATES; j++) {
-				if (idArray[j] == 0)
-					zeroCounter++;
-			}
-			if (level == NUM_GATES - zeroCounter) {
-				printf("\nlevel: %d, at:%d\n", level, i);
-				executionLevel[level] = i;
-				level++;
-			}
-			printf("%d ", executionOrder[i]);
-		}
+		clones = (SocialForceRoomClone **)malloc(numClonesTemp * sizeof(SocialForceRoomClone*));
 
 		//init utility
 		randomHost = new GRandom(modelHostParams.MAX_AGENT_NO);
 		util::hostAllocCopyToDevice<GRandom>(randomHost, &random);
-
-		//init auxiliar clones step arrays
-		cudaMalloc((void**)&bigAgentPtrArray, numClones * modelHostParams.MAX_AGENT_NO * sizeof(void*));
-		cudaMalloc((void**)&bigDataIdxArray, numClones * modelHostParams.MAX_AGENT_NO * sizeof(int));
-		cudaMalloc((void**)&bigDelMarkArray, numClones * modelHostParams.MAX_AGENT_NO * sizeof(int));
-		cudaMalloc((void**)&bigHashArray, numClones * modelHostParams.MAX_AGENT_NO * sizeof(int));
-		cudaMalloc((void**)&bigDataIdxArray, numClones * modelHostParams.MAX_AGENT_NO * sizeof(int));
-		cudaMalloc((void**)&bigOffsetArray, numClones * modelHostParams.MAX_AGENT_NO * sizeof(int));
-		cudaMalloc((void**)&bigNumAgentArray, numClones * modelHostParams.MAX_AGENT_NO * sizeof(int));
-
-		bigAgentPtrArrayHost = (void**)malloc(numClones * modelHostParams.MAX_AGENT_NO * sizeof(void*));
-		bigDelMarkArrayHost = (int*)malloc(numClones * modelHostParams.MAX_AGENT_NO * sizeof(int));
-		bigDataIdxArrayHost = (int*)malloc(numClones * modelHostParams.MAX_AGENT_NO * sizeof(int));
-		bigHashArrayHost = (int*)malloc(numClones * modelHostParams.MAX_AGENT_NO * sizeof(int));
-		bigOffsetArrayHost = (int*)malloc(numClones * modelHostParams.MAX_AGENT_NO * sizeof(int));
-		bigNumAgentArrayHost = (int*)malloc(numClones * modelHostParams.MAX_AGENT_NO * sizeof(int));
 
 		util::hostAllocCopyToDevice<SocialForceRoomModel>(this, (SocialForceRoomModel**)&this->model);
 		getLastCudaError("INIT");
@@ -441,12 +364,6 @@ public:
 		addAgentsOnDevice<<<gSize, BLOCK_SIZE>>>(random, numAgentLocal, clones[0]->cloneDev);
 		cudaMemcpy(clones[0]->unsortedAgentPtrArray, clones[0]->agentsHost->agentPtrArray,
 			numAgentLocal * sizeof(void*), cudaMemcpyDeviceToDevice);
-		for (int i = 1; i < numClones; i++) {
-			cudaMemcpy(clones[i]->unsortedAgentPtrArray, clones[0]->agentsHost->agentPtrArray,
-				numAgentLocal * sizeof(void*), cudaMemcpyDeviceToDevice);
-			cudaMemcpy(clones[i]->clonedWorldHost->allAgents, clones[0]->agentsHost->agentPtrArray,
-				numAgentLocal * sizeof(void*), cudaMemcpyDeviceToDevice);
-		}
 
 		//timer related
 		cudaEventCreate(&timerStart);
@@ -462,7 +379,7 @@ public:
 
 #ifdef _WIN32
 #ifdef CLONE
-		int chosen = (GSimVisual::clicks + numClones - 1) % numClones;
+		int chosen = 0; // (GSimVisual::clicks + numClones - 1) % numClones;
 		sprintf(cloneName, "clone: %d - [ ", clones[chosen]->cloneid);
 		int len = 0; 
 		char temp[4];
@@ -482,64 +399,50 @@ public:
 	}
 	__host__ void step()
 	{
-
-		float time = 0;
+		vector<SocialForceRoomClone*> clonesAtCurrentDepth;
+		vector<SocialForceRoomClone*> clonesAtNextDepth;
 
 		TIMER_START(0);
 		//1. run the original copy
 		clones[0]->stepParallel1(NULL);
 		clones[0]->stepParallel2(NULL, this);
-		cudaEventRecord(cloneEvents[0], clones[0]->cloneStream);
+		cudaEventRecord(clones[0]->cloneEvent, clones[0]->cloneStream);
 		TIMER_END(0, "0", 0);
 
+		clonesAtNextDepth.insert(
+			clonesAtNextDepth.end(),
+			clones[0]->childClones.begin(),
+			clones[0]->childClones.end()
+			);
+		
 		//2. run the clones
-		int childVal[NUM_GATES];
-		int fatherVal[NUM_GATES];
-		for (int j = 1; j < NUM_GATES + 1; j++) {
-			int levelStart = executionLevel[j];
-			int levelEnd = executionLevel[j+1];
-
-			
-		//	for (int el = levelStart; el < levelEnd; el++) {
-		//		int i = executionOrder[el];
-		////for(int i = 1; i < numClones; i++) {
-		//		decode(i, childVal);
-		//		fatherCloneidArray(childVal, fatherVal);
-		//		int fatherCloneid = encode(fatherVal);
-		//		SocialForceRoomClone *fatherClone = clones[fatherCloneid];
-
-		//		clones[i]->stepParallel1(fatherClone);
-		//	}
-			
-
-			clonesStepPhase1(clones, j, executionLevel, executionOrder);
-			clonesStepPhase2(clones, j, executionLevel, executionOrder);
-
-			for (int el = levelStart; el < levelEnd; el++) {
-				int i = executionOrder[el];
-		//for(int i = 1; i < numClones; i++) {
-				decode(i, childVal);
-				fatherCloneidArray(childVal, fatherVal);
-				int fatherCloneid = encode(fatherVal);
-				SocialForceRoomClone *fatherClone = clones[fatherCloneid];
-
-				clones[i]->stepParallel2(fatherClone, this);
+		while (clonesAtNextDepth.size() != 0) {
+			clonesAtCurrentDepth = clonesAtNextDepth;
+			clonesAtNextDepth.clear();
+			for (int i = 0; i < clonesAtCurrentDepth.size(); i++) {
+				SocialForceRoomClone *myClone = clonesAtCurrentDepth[i];
+				clonesAtNextDepth.insert(
+					clonesAtNextDepth.end(),
+					myClone->childClones.begin(),
+					myClone->childClones.end()
+					);
 			}
-
-			
-			for (int el = levelStart; el < levelEnd; el++) {
-				int i = executionOrder[el];
-		//for(int i = 1; i < numClones; i++) {
-				decode(i, childVal);
-				fatherCloneidArray(childVal, fatherVal);
-				int fatherCloneid = encode(fatherVal);
-				SocialForceRoomClone *fatherClone = clones[fatherCloneid];
-				clones[i]->stepParallel3(fatherClone);
-				cudaEventRecord(cloneEvents[i], clones[i]->cloneStream);
+			//clonesStepPhase1(clones, j, executionLevel, executionOrder);
+			//clonesStepPhase2(clones, j, executionLevel, executionOrder);
+			for (int i = 0; i < clonesAtCurrentDepth.size(); i++) {
+				SocialForceRoomClone *myClone = clonesAtCurrentDepth[i];
+				myClone->stepParallel1(myClone->parentClone);
 			}
-			
+			for (int i = 0; i < clonesAtCurrentDepth.size(); i++) {
+				SocialForceRoomClone *myClone = clonesAtCurrentDepth[i];
+				myClone->stepParallel2(myClone->parentClone, this);
+			}
+			for (int i = 0; i < clonesAtCurrentDepth.size(); i++) {
+				SocialForceRoomClone *myClone = clonesAtCurrentDepth[i];
+				myClone->stepParallel3(myClone->parentClone);
+				cudaEventRecord(myClone->cloneEvent, myClone->cloneStream);
+			}
 		}
-
 
 		//debug info, print the real data of original agents and cloned agents, or throughputs
 #if defined(VALIDATE)
@@ -550,9 +453,11 @@ public:
 
 		//5. swap data and dataCopy
 		clones[0]->agentsHost->swapPool();
+		/*
 		for (int i = 1; i < numClones; i++) {
 			clones[i]->agentsHost->swapPool();
 		}
+		*/
 
 		//paint related stuff
 #ifdef _WIN32
@@ -560,6 +465,7 @@ public:
 #endif
 		getLastCudaError("step");
 	}
+
 	__host__ void stop()
 	{
 		//fout.close();
@@ -722,7 +628,7 @@ __host__ void SocialForceRoomModel::clonesStepPhase1(SocialForceRoomClone **clon
 		fatherCloneidArray(childVal, fatherVal);
 		int fatherCloneid = encode(fatherVal);
 		SocialForceRoomClone *fatherClone = clones[fatherCloneid];
-		cudaStreamWaitEvent(childClone->cloneStream, cloneEvents[fatherCloneid], 0);
+		cudaStreamWaitEvent(childClone->cloneStream, fatherClone->cloneEvent, 0);
 
 		int numFatherAgent = fatherClone->agentsHost->numElem;
 		if (numFatherAgent != 0) {
