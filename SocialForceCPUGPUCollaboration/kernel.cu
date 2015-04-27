@@ -37,7 +37,7 @@
 #define SIZE_SUBJ_DATA 16
 #define NUM_BLOCK_PER_BATCH 16
 #define NUM_BLOCK NUM_BLOCK_PER_BATCH
-#define NUM_BATCH 4
+#define NUM_BATCH 2
 #define RANGE 0.05 //environment dim ranging from 0 ~ 1
 
 class AgentData {
@@ -144,8 +144,9 @@ int* agentCids = new int[NUM_AGENT];
 int* agentIds = new int[NUM_AGENT];
 
 GPUBatch batches[NUM_BATCH];
+int batchId = 0;
 
-FILE *fpOut;
+//FILE *fpOut;
 
 __global__ void agentExecKernel(int *neighborDataDev, int *subjDataDev, blockIndices *biDev) {
 	extern __shared__ int smem[];
@@ -210,11 +211,8 @@ __global__ void agentExecKernel(int *neighborDataDev, int *subjDataDev, blockInd
 
 	//update subject agent data
 	int smemIdx = subj - firstSubj;
-	if (smemIdx < 0 || smemIdx > 64) {
-		printf("batchId: %d, blockIdInBatch: %d, subj: %d, idx: %d, firstSubj:%d\n", batchId, blockIdInBatch, subjList[threadIdx.x], threadIdx.x + blockIdx.x * blockDim.x, firstSubj);
-	}
 	int temp = 0;
-	while (++temp < 1000 && threadIdx.x < numNbor) {
+	while (++temp < 100 && threadIdx.x < numNbor) {
 		atomicInc((unsigned int*)&fSumX[smemIdx], NUM_AGENT);
 		atomicInc((unsigned int*)&fSumY[smemIdx], NUM_AGENT);
 	}
@@ -273,7 +271,6 @@ namespace util {
 void neighborSearching() {
 	// create batch data structure alias
 	int inBatchBlockId = 0;
-	int batchId = 0;
 	GPUBatch batch = batches[batchId];
 	int *nborData = batch.nborData;
 	int *nborDataDev = batch.nborDataDev;
@@ -387,8 +384,8 @@ void neighborSearching() {
 			for (int jj = 0; jj < 128; jj++) {
 				int subjtemp = nborList.subjIdList[jj];
 				int firstSubjTemp = nborList.subjIdList[0];
-				fprintf(fpOut, "%d, %d\n", subjtemp, firstSubj);
-				fflush(fpOut);
+				//fprintf(fpOut, "%d, %d\n", subjtemp, firstSubj);
+				//fflush(fpOut);
 			}
 
 			interrupted = false;
@@ -412,14 +409,12 @@ void neighborSearching() {
 		// perform GPU processing
 		if (batchPrepared) {
 			batchPrepared = false;
-			cudaError_t error = cudaGetLastError();
-			printf("Sync Error: %s\n", cudaGetErrorString(error));
 
 			cudaMemcpyAsync(nborDataDev, nborData, sizeof(int) * SIZE_NBOR_LIST * SIZE_NBOR_DATA * NUM_BLOCK_PER_BATCH, cudaMemcpyHostToDevice, batch.stream);
 			cudaMemcpyAsync(subjDataDev, subjData, sizeof(int) * SIZE_SUBJ_LIST * SIZE_SUBJ_DATA * NUM_BLOCK_PER_BATCH, cudaMemcpyHostToDevice, batch.stream);
 			cudaMemcpyAsync(batch.biDev, batch.bi, sizeof(blockIndices) * NUM_BLOCK_PER_BATCH, cudaMemcpyHostToDevice, batch.stream);
-			fprintf(fpOut, "\n one batch");
-			fflush(fpOut);
+			//fprintf(fpOut, "\n one batch");
+			//fflush(fpOut);
 
 			error = cudaGetLastError();
 			printf("Copy Error: %s\n", cudaGetErrorString(error));
@@ -440,6 +435,11 @@ void neighborSearching() {
 			subjDataDev = batch.subjDataDev;
 			nborList.setBatch(inBatchBlockId, nborData);
 			subjList.setBlock(inBatchBlockId, subjData);
+
+			// wait for next stream's previous work to be done
+			cudaStreamSynchronize(batch.stream);
+			cudaError_t error = cudaGetLastError();
+			printf("Sync Error: %s\n", cudaGetErrorString(error));
 		}
 	}
 }
@@ -497,7 +497,7 @@ int main(int argc, char** argv) {
 	}
 
 
-	fpOut = fopen("output.txt", "w");
+	//fpOut = fopen("output.txt", "w");
 
 	// Visualization
 	/*
@@ -519,7 +519,7 @@ int main(int argc, char** argv) {
 	//glPointSize(2);
 	*/
 	int tick = 0;
-	while (tick++ < 100) {
+	while (tick++ < 1000) {
 		for (int i = 0; i < NUM_AGENT; i++) {
 			agentList[i]->data->x = (double)rand() / RAND_MAX;
 			agentList[i]->data->y = (double)rand() / RAND_MAX;
