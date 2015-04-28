@@ -3,7 +3,6 @@
 
 #include "gsimcore.cuh"
 #include "gsimvisual.cuh"
-#include <vector>
 
 #define DIST(ax, ay, bx, by) sqrt((ax-bx)*(ax-bx)+(ay-by)*(ay-by))
 
@@ -175,7 +174,7 @@ public:
 
 	SocialForceRoomClone *cloneDev;
 	SocialForceRoomClone *parentClone;
-	std::vector<SocialForceRoomClone*> childClones;
+	thrust::host_vector<SocialForceRoomClone*> childClones;
 
 	int cloneidArray[NUM_GATES];
 	int cloneMasks[NUM_GATES];
@@ -395,8 +394,8 @@ public:
 	}
 	__host__ void step()
 	{
-		std::vector<SocialForceRoomClone*> clonesAtCurrentDepth;
-		std::vector<SocialForceRoomClone*> clonesAtNextDepth;
+		thrust::host_vector<SocialForceRoomClone*> clonesAtCurrentDepth;
+		thrust::host_vector<SocialForceRoomClone*> clonesAtNextDepth;
 
 		TIMER_START(0);
 		//1. run the original copy
@@ -476,8 +475,8 @@ public:
 		GSimVisual::getInstance().stop();
 #endif
 	}
-	__host__ void clonesStepPhase1(std::vector<SocialForceRoomClone*> clonesAtCurrentDepth);
-	__host__ void clonesStepPhase2(std::vector<SocialForceRoomClone*> clonesAtCurrentDepth);
+	__host__ void clonesStepPhase1(thrust::host_vector<SocialForceRoomClone*> clonesAtCurrentDepth);
+	__host__ void clonesStepPhase2(thrust::host_vector<SocialForceRoomClone*> clonesAtCurrentDepth);
 };
 
 #ifdef CLONE
@@ -601,7 +600,7 @@ __host__ void SocialForceRoomClone::stepParallel3(SocialForceRoomClone *fatherCl
 	cudaEventDestroy(timerStop);
 	getLastCudaError("stepstepPhase3");
 }
-__host__ void SocialForceRoomModel::clonesStepPhase1(std::vector<SocialForceRoomClone*> clonesAtCurrentDepth) {
+__host__ void SocialForceRoomModel::clonesStepPhase1(thrust::host_vector<SocialForceRoomClone*> clonesAtCurrentDepth) {
 	getLastCudaError("clonesStepPhase1");
 
 	int bSize = BLOCK_SIZE;
@@ -725,7 +724,7 @@ __host__ void SocialForceRoomModel::clonesStepPhase1(std::vector<SocialForceRoom
 	}
 	getLastCudaError("clonesStepPhase1");
 }
-__host__ void SocialForceRoomModel::clonesStepPhase2(std::vector<SocialForceRoomClone*> clonesAtCurrentDepth) {
+__host__ void SocialForceRoomModel::clonesStepPhase2(thrust::host_vector<SocialForceRoomClone*> clonesAtCurrentDepth) {
 
 	SocialForceRoomClone *fatherClone = NULL;
 	int bSize = BLOCK_SIZE;
