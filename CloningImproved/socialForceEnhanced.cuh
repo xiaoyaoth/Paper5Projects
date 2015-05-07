@@ -106,7 +106,6 @@ struct obstacleLine
 #define NUM_WALLS 10
 #define NUM_GATES 3
 
-__constant__ double2 gateLocs[NUM_GATES];
 __constant__ obstacleLine walls[NUM_WALLS];
 //__constant__ double gateSizes[NUM_GATE_0_CHOICES]; 
 
@@ -174,7 +173,7 @@ public:
 
 	SocialForceRoomClone *cloneDev;
 	SocialForceRoomClone *parentClone;
-	thrust::host_vector<SocialForceRoomClone*> childClones;
+	thrust::host_vector<SocialForceRoomClone*> *childClones;
 
 	int cloneidArray[NUM_GATES];
 	int cloneMasks[NUM_GATES];
@@ -182,9 +181,12 @@ public:
 	cudaStream_t cloneStream;
 	cudaEvent_t cloneEvent;
 
+	obstacleLine *gates;
+
 	__host__ SocialForceRoomClone(int num, int *cloneidArrayVal) {
 		cudaStreamCreate(&cloneStream);
 		cudaEventCreate(&cloneEvent, cudaEventDisableTiming);
+		childClones = new thrust::host_vector<SocialForceRoomClone *>();
 		//cloneStream = 0;
 
 		agentsHost = new AgentPool<SocialForceRoomAgent, SocialForceRoomAgentData>(0, modelHostParams.MAX_AGENT_NO, sizeof(SocialForceRoomAgentData));
@@ -314,12 +316,6 @@ public:
 		wallsHost[9].init(0.3 * wLocal, 0.5 * hLocal, 0.91 * wLocal, 0.5 * hLocal);
 		cudaMemcpyToSymbol(walls, &wallsHost, NUM_WALLS * sizeof(obstacleLine));
 
-		double2 gateLocsHost[NUM_GATES];
-		gateLocsHost[0] = make_double2(0.5 * wLocal, 0.7 * hLocal);
-		gateLocsHost[1] = make_double2(0.3 * wLocal, 0.5 * hLocal);
-		gateLocsHost[2] = make_double2(0.5 * wLocal, 0.3 * hLocal);
-		cudaMemcpyToSymbol(gateLocs, &gateLocsHost, NUM_GATES * sizeof(double2));
-
 		//init clone parameters
 		numChoicesPerGate[0] = NUM_GATE_0_CHOICES;
 		numChoicesPerGate[1] = NUM_GATE_1_CHOICES;
@@ -337,6 +333,9 @@ public:
 		fout.open(outfname, std::ios::out);
 
 		int cloneidArrayValLocal[NUM_GATES];
+		this->decode(0, cloneidArrayValLocal);
+		rootClone = new SocialForceRoomClone(numAgentLocal, cloneidArrayValLocal);
+		cudaEventCreate(&rootClone->cloneEvent, cudaEventDisableTiming);
 
 		//init utility
 		randomHost = new GRandom(modelHostParams.MAX_AGENT_NO);
@@ -406,8 +405,8 @@ public:
 
 		clonesAtNextDepth.insert(
 			clonesAtNextDepth.end(),
-			rootClone->childClones.begin(),
-			rootClone->childClones.end()
+			rootClone->childClones->begin(),
+			rootClone->childClones->end()
 			);
 		
 		//2. run the clones
@@ -418,8 +417,8 @@ public:
 				SocialForceRoomClone *myClone = clonesAtCurrentDepth[i];
 				clonesAtNextDepth.insert(
 					clonesAtNextDepth.end(),
-					myClone->childClones.begin(),
-					myClone->childClones.end()
+					myClone->childClones->begin(),
+					myClone->childClones->end()
 					);
 			}
 			//clonesStepPhase1(clones, j, executionLevel, executionOrder);
@@ -448,11 +447,21 @@ public:
 
 		//5. swap data and dataCopy
 		rootClone->agentsHost->swapPool();
-		/*
-		for (int i = 1; i < numClones; i++) {
-			clones[i]->agentsHost->swapPool();
+		clonesAtCurrentDepth.clear();
+		clonesAtCurrentDepth.insert
+			(clonesAtCurrentDepth.end(), 
+			rootClone->childClones->begin(),
+			rootClone->childClones->end()
+			);
+		while (!clonesAtCurrentDepth.empty()) {
+			SocialForceRoomClone *c1 = clonesAtCurrentDepth.back();
+			clonesAtCurrentDepth.pop_back();
+			clonesAtCurrentDepth.insert(clonesAtCurrentDepth.end(),
+				c1->childClones->begin(),
+				c1->childClones->end());
+
+			c1->agentsHost->swapPool();
 		}
-		*/
 
 		//paint related stuff
 #ifdef _WIN32
@@ -817,6 +826,7 @@ class SocialForceRoomAgent : public GAgent {
 public:
 	GRandom *random;
 	GWorld *myWorld;
+	SocialForceRoomClone *myClone;
 
 	int id;
 	int cloneid;
@@ -1028,15 +1038,7 @@ public:
 		choice = cloneidArray[0]; gateSize = gate0Sizes[choice]; wall.ey -= gateSize;}
 		if (5 == wallId)	{int choice = cloneidArray[0]; gateSize = gate0Sizes[choice]; wall.sy += gateSize;}
 	}
-	__device__ void alterGate(obstacleLine &gate, int i) {
-		double2 gateLoc = gateLocs[i];
-		gate.sx = gate.ex = gateLoc.x;
-		gate.sy = gate.ey = gateLoc.y;
-		double gateSize;
-		if (i == 0) {gateSize = gate0Sizes[NUM_GATE_0_CHOICES-1]; gate.sy -= gateSize; gate.ey += gateSize;} 
-		if (i == 1) {gateSize = gate1Sizes[NUM_GATE_1_CHOICES-1]; gate.sx -= gateSize; gate.ex += gateSize;} 
-		if (i == 2) {gateSize = gate2Sizes[NUM_GATE_2_CHOICES-1]; gate.sy -= gateSize; gate.ey += gateSize;} 
-	}
+
 	__device__ void step(GModel *model){
 		double cMass = 100;
 
@@ -1063,18 +1065,19 @@ public:
 			computeForceWithWall(dataLocal, wall, cMass, fSum);
 		}
 
+		/*
 #ifdef CLONE
 		//decision point A: impaction from wall
 		int gateMask = ~0;
 		for (int i = 0; i < NUM_GATES; i++) {
-			obstacleLine gate;
-			alterGate(gate, i);
+			obstacleLine gate = this->myClone->gates[i];
 			if(gate.pointToLineDist(loc) < 2) {
 				//current agent impacted by a chosing gate;
 				this->flagCloning[i] = gateMask;
 			}
 		}
 #endif
+		*/
 
 		//sum up
 		dvt.x += fSum.x / mass;
