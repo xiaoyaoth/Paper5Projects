@@ -7,12 +7,12 @@
 #endif
 //#include "test.cuh"
 //#include "socialForce.cuh"
-#include "socialForceEnhanced.cuh"
+#include "SimpleClone.cuh"
 int main(int argc, char *argv[]){
 	//argv[1]: config.txt
 	//argv[2]: numAgent
-	init<SocialForceRoomAgentData>(argv[1]);
-	SocialForceRoomModel *model_h = new SocialForceRoomModel(&argv[2]);
+	init<SimpleAgentData>(argv[1]);
+	SimpleModel *model_h = new SimpleModel();
 	/*Main work started here*/
 
 	cudaEvent_t start, stop;
