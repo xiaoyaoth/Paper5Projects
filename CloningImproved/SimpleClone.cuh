@@ -35,7 +35,12 @@ public:
 
 	uchar4 cloneColor;
 
-	__host__ SimpleClone() {
+	SimpleModel *myModel, *myModelHost;
+
+	__host__ SimpleClone(SimpleModel *modelHost) {
+		myModelHost = modelHost;
+		myModel = (SimpleModel*)modelHost->model;
+
 		parentClone = NULL;
 		childClones = new thrust::host_vector<SimpleClone*>();
 
@@ -48,7 +53,7 @@ public:
 		util::hostAllocCopyToDevice<SimpleClone>(this, &selfDev);
 	}
 
-	__host__ void step(SimpleModel *modelHost); 
+	__host__ void step(); 
 	__host__ void activeClone();
 	__host__ void updateContext();
 	__host__ void throttling();
@@ -82,10 +87,10 @@ public:
 	__host__ void step() {
 		// all clones are launched, but child clones need to wait for the synchronization barrier
 		for (int i = 0; i < (*clones).size(); i++)
-			(*clones)[i]->step(this);
+			(*clones)[i]->step();
 
 		if (stepCount == 10) { // if certain criterion is met, for example clone 0 is chosen
-			SimpleClone *c = new SimpleClone();
+			SimpleClone *c = new SimpleClone(this);
 			c->parentClone = rootClone;
 			rootClone->childClones->push_back(c);
 			(*clones).push_back(c);
@@ -107,7 +112,7 @@ public:
 	SimpleClone *myClone;
 	SimpleModel *myModel;
 
-	int id;
+	int contextId;
 	SimpleAgent *myOrigin;
 
 public:
@@ -132,7 +137,7 @@ public:
 
 	__device__ void init(int dataSlot, SimpleClone *myClone) {
 		this->color = myClone->cloneColor;
-		this->id = dataSlot;
+		this->contextId = dataSlot;
 
 		this->myOrigin = NULL;
 		this->myClone = myClone;
@@ -147,6 +152,17 @@ public:
 	}
 
 	__device__ void initWithParent(SimpleAgent *parentAgent, int dataSlot, SimpleClone *myClone) {
+		this->color = myClone->cloneColor;
+		this->contextId = parentAgent->contextId;
+		this->myOrigin = parentAgent;
+		this->myClone = myClone;
+		SimpleAgentData dataLocal = *(SimpleAgentData*)parentAgent->data;
+		dataLocal.agentPtr = this;
+
+		this->data = myClone->agents->dataInSlot(dataSlot);
+		this->dataCopy = myClone->agents->dataCopyInSlot(dataSlot);
+		*(SimpleAgentData*)this->data = dataLocal;
+		*(SimpleAgentData*)this->dataCopy = dataLocal;
 
 	}
 };
@@ -157,12 +173,8 @@ __device__ bool SimpleClone::cloningConditionDev(SimpleAgent *parentAgent){
 	// doSomethingWith(this->obst, parentAgent);
 	// 2. check existing child agents with parent agent
 	// doSomethingWith(this->agents, parentAgent);
-	return true;
-}
-
-__device__ void SimpleClone::updateContextDev(SimpleAgent *childAgent){
-	// doSomethingWith(this->context, parentAgent);
-	// each child agent should have a global context id, so that it could update itself in the context
+	float r = this->myModel->random->uniform();
+	return r < 0.2;
 }
 
 __host__ void SimpleClone::activeClone() {
@@ -181,14 +193,14 @@ __host__ void SimpleClone::throttling() {
 	// perform throttling mechanism to refrain the cloning propagation
 }
 
-__host__ void SimpleClone::step(SimpleModel *modelHost) {
+__host__ void SimpleClone::step() {
 	if (this->parentClone != NULL) {
 		this->activeClone();
 	}
 	this->agentsHost->cleanup(this->agents);
 	if (this->agentsHost->numElem > 0) {
 		this->updateContext();
-		this->agentsHost->stepPoolAgent(modelHost->model, 0);
+		this->agentsHost->stepPoolAgent(myModelHost->model, 0);
 		this->throttling();
 	}
 }
@@ -210,7 +222,7 @@ __global__ void activeCloneKernel(SimpleClone *parentCloneDev, SimpleClone *chil
 		SimpleAgent *parentAgent = parentCloneDev->agents->agentPtrArray[idx];
 		// doSomethingWith parentAgent and the parameter
 		bool cloningFlag = childCloneDev->cloningConditionDev(parentAgent);
-		if (idx < NUM_AGENT / 4 && cloningFlag) { // active clone condition
+		if (cloningFlag) { // active clone condition
 			int agentSlot = childCloneDev->agents->agentSlot();
 			int dataSlot = childCloneDev->agents->dataSlot(agentSlot);
 			SimpleAgent *childAgent = childCloneDev->agents->agentInSlot(dataSlot);
@@ -225,6 +237,7 @@ __global__ void updateContextKernel(SimpleClone *childCloneDev) {
 	if (idx < childCloneDev->agents->numElem) {
 		SimpleAgent *childAgent = childCloneDev->agents->agentPtrArray[idx];
 		childCloneDev->updateContextDev(childAgent);
+		childCloneDev->cloneContext[childAgent->contextId] = childAgent;
 	}
 }
 
