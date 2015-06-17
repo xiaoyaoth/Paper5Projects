@@ -7,6 +7,7 @@
 #define NUM_AGENT 256
 #define BLOCK_SIZE 64
 #define GRID_SIZE(n) (n%BLOCK_SIZE==0 ? n/BLOCK_SIZE : n/BLOCK_SIZE + 1)
+#define NUM_PARAM 4
 
 class SimpleAgent;
 class SimpleModel;
@@ -16,7 +17,7 @@ __global__ void activeCloneKernel(SimpleClone *parentCloneDev, SimpleClone *chil
 __global__ void updateContextKernel(SimpleClone *childCloneDev);
 
 struct SimpleAgentData : public GAgentData {
-	
+
 };
 
 struct obstacle {
@@ -28,7 +29,7 @@ public:
 	obstacle *obst, *obstHost;
 	AgentPool<SimpleAgent, SimpleAgentData> *agents, *agentsHost;
 	SimpleAgent **cloneContext;
-	
+
 	SimpleClone *selfDev;
 	SimpleClone *parentClone;
 	thrust::host_vector<SimpleClone*> *childClones;
@@ -36,12 +37,18 @@ public:
 	uchar4 cloneColor;
 
 	SimpleModel *myModel, *myModelHost;
+	int *pv, *pvHost; // parameter value
 
-	__host__ SimpleClone(SimpleModel *modelHost) {
+	__host__ SimpleClone(SimpleModel *modelHost, SimpleClone *parent, int *pvInput) {
 		myModelHost = modelHost;
 		myModel = (SimpleModel*)modelHost->model;
 
-		parentClone = NULL;
+		pvHost = new int[NUM_PARAM];
+		cudaMalloc((void**)&pvHost, sizeof(int) * NUM_PARAM);
+		memcpy(pvHost, pvInput, sizeof(int) * NUM_PARAM);
+		cudaMemcpy(pv, pvInput, sizeof(int) * NUM_PARAM, cudaMemcpyHostToDevice);
+
+		parentClone = parent;
 		childClones = new thrust::host_vector<SimpleClone*>();
 
 		agentsHost = new AgentPool<SimpleAgent, SimpleAgentData>(0, modelHostParams.MAX_AGENT_NO, sizeof(SimpleAgentData));
@@ -53,7 +60,7 @@ public:
 		util::hostAllocCopyToDevice<SimpleClone>(this, &selfDev);
 	}
 
-	__host__ void step(); 
+	__host__ void step();
 	__host__ void activeClone();
 	__host__ void updateContext();
 	__host__ void throttling();
@@ -68,7 +75,7 @@ public:
 	thrust::host_vector<SimpleClone*> *clones;
 
 	__host__ SimpleModel() {
-		rootClone = new SimpleClone();
+		rootClone = new SimpleClone(this, NULL, NULL);
 		clones = new thrust::host_vector<SimpleClone*>();
 
 		randomHost = new GRandom(modelHostParams.MAX_AGENT_NO);
@@ -90,7 +97,7 @@ public:
 			(*clones)[i]->step();
 
 		if (stepCount == 10) { // if certain criterion is met, for example clone 0 is chosen
-			SimpleClone *c = new SimpleClone(this);
+			SimpleClone *c = new SimpleClone(this, NULL, NULL);
 			c->parentClone = rootClone;
 			rootClone->childClones->push_back(c);
 			(*clones).push_back(c);
@@ -167,6 +174,32 @@ public:
 	}
 };
 
+__device__ bool cloningConditionDev(SimpleClone *parentClone, SimpleClone *childClone,
+	SimpleAgent *parentAgent, SimpleAgent *childAgent) {
+	int i = 0;
+	float2 parentLoc = parentAgent->data->loc;
+	float2 dim = make_float2(modelDevParams.WIDTH, modelDevParams.HEIGHT);
+	if (parentClone->pv[i] != childClone->pv[i]) {
+		if (length(parentLoc - 0.25 * dim) < 10)
+			return true;
+	}
+	i++; // i == 1
+	if (parentClone->pv[i] != childClone->pv[i]) {
+		if (length(parentLoc - make_float2(0.25 * dim.x + 0.75 * dim.y)) < 10)
+			return true;
+	}
+	i++; // i == 2
+	if (parentClone->pv[i] != childClone->pv[i]) {
+		if (length(parentLoc - make_float2(0.25 * dim.x + 0.75 * dim.y)) < 10)
+			return true;
+	}
+	i++; // i == 3
+	if (parentClone->pv[i] != childClone->pv[i]) {
+		if (length(parentLoc - 0.75 * dim) < 10)
+			return true;
+	}
+}
+
 __device__ bool SimpleClone::cloningConditionDev(SimpleAgent *parentAgent){
 	// check if a given parent need to be cloned
 	// 1. check new parameter with parent agent
@@ -183,7 +216,7 @@ __host__ void SimpleClone::activeClone() {
 }
 
 __host__ void SimpleClone::updateContext() {
-	cudaMemcpy(this->cloneContext, parentClone->cloneContext, 
+	cudaMemcpy(this->cloneContext, parentClone->cloneContext,
 		sizeof(SimpleAgent*) * NUM_AGENT, cudaMemcpyDeviceToDevice);
 	int gSize = GRID_SIZE(NUM_AGENT); // NUM_AGENT is the number of agent in the context
 	updateContextKernel << <gSize, BLOCK_SIZE >> > (this->selfDev);
@@ -208,7 +241,7 @@ __host__ void SimpleClone::step() {
 __global__ void addRootCloneAgents(SimpleClone *rootCloneDev)
 {
 	uint idx = threadIdx.x + blockIdx.x * blockDim.x;
-	if (idx < NUM_AGENT){ 
+	if (idx < NUM_AGENT){
 		int dataSlot = idx;
 		SimpleAgent *ag = rootCloneDev->agents->agentInSlot(dataSlot);
 		ag->init(dataSlot, rootCloneDev);
