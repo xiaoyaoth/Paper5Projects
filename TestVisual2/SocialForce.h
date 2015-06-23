@@ -29,17 +29,6 @@ struct Color{
 	}
 };
 
-/*
-class SimpleAgent {
-public:
-double2 loc;
-double2 locNext;
-double2 locDefault;
-int contextId;
-Color color;
-};
-*/
-
 struct obstacleLine
 {
 	double sx;
@@ -137,12 +126,13 @@ inline double2 operator-(const double2& a, const double2& b)
 #define	maxv 3
 
 #define NUM_CAP 128
-#define NUM_PARAM 4
-#define CELL_DIM 4
+#define NUM_PARAM 3
 #define ENV_DIM 64
+#define NUM_CELL 8
+#define CELL_DIM 8
 #define RADIUS_I 5
 
-#define NUM_WALLS 2
+#define NUM_WALLS 4
 
 class SocialForceAgent;
 class SocialForceClone;
@@ -162,7 +152,6 @@ class SocialForceAgent {
 public:
 	SocialForceClone *myClone;
 	//int id;
-	int cloneid;
 	SocialForceAgent *myOrigin;
 	SocialForceAgentData data;
 	SocialForceAgentData dataCopy;
@@ -170,10 +159,6 @@ public:
 	Color color;
 	int contextId;
 	//double gateSize;
-
-	SocialForceAgent() {
-
-	}
 
 	double correctCrossBoader(double val, double limit);
 	void computeIndivSocialForceRoom(const SocialForceAgentData &myData, const SocialForceAgentData &otherData, double2 &fSum);
@@ -184,33 +169,40 @@ public:
 	void chooseNewGoal(const double2 &newLoc, double epsilon, double2 &newGoal);
 	void step();
 	void init(int idx);
+	void initNewClone(SocialForceAgent *agent, SocialForceClone *clone);
 };
 class SocialForceClone {
 public:
 	SocialForceAgent *agents;
 	int numElem;
 	SocialForceAgent **context;
-	int *pv;
+	bool *cloneFlag;
+	int pv[NUM_PARAM];
 	Color color;
-	obstacleLine walls[2];
+	obstacleLine walls[6];
+	bool takenMap[NUM_CELL * NUM_CELL];
 
-	SocialForceClone() {
+	SocialForceClone(int pv1[NUM_PARAM]) {
 		agents = new SocialForceAgent[NUM_CAP];
 		numElem = 0;
 		context = new SocialForceAgent*[NUM_CAP];
-		pv = new int[NUM_PARAM];
+		cloneFlag = new bool[NUM_CAP];
+		memset(context, 0, sizeof(void*) * NUM_CAP);
+		memset(cloneFlag, 0, sizeof(bool) * NUM_CAP);
 		color = Color();
-		walls[0].init(0.75 * ENV_DIM, -0.1 * ENV_DIM, 0.75 * ENV_DIM, 0.45 * ENV_DIM);
-		walls[1].init(0.75 * ENV_DIM, 0.5 * ENV_DIM, 0.75 * ENV_DIM, 1.1 * ENV_DIM);
+		memcpy(pv, pv1, sizeof(int) * NUM_PARAM);
+		//walls[0].init(0.25 * ENV_DIM, -0.10 * ENV_DIM, 0.25 * ENV_DIM, (0.45 - pv[0] * 0.05) * ENV_DIM);
+		//walls[1].init(0.25 * ENV_DIM,  0.50 * ENV_DIM, 0.25 * ENV_DIM, 1.10 * ENV_DIM);
+		walls[0].init(0.50 * ENV_DIM, -0.10 * ENV_DIM, 0.50 * ENV_DIM, (0.25 - pv[0] * 0.05) * ENV_DIM);
+		walls[1].init(0.50 * ENV_DIM,  0.30 * ENV_DIM, 0.50 * ENV_DIM, 1.10 * ENV_DIM);
+		walls[2].init(0.75 * ENV_DIM, -0.10 * ENV_DIM, 0.75 * ENV_DIM, (0.70 - pv[1] * 0.05) * ENV_DIM);
+		walls[3].init(0.75 * ENV_DIM,  0.75 * ENV_DIM, 0.75 * ENV_DIM, 1.10 * ENV_DIM);
 	}
-
 	void step();
 };
-
-
 double SocialForceAgent::correctCrossBoader(double val, double limit)
 {
-	if (val > limit)
+	if (val >= limit)
 		return limit - 0.001;
 	else if (val < 0)
 		return 0;
@@ -339,47 +331,21 @@ void SocialForceAgent::computeSocialForceRoom(SocialForceAgentData &dataLocal, d
 	dataLocal.numNeighbor = neighborCount;
 }
 void SocialForceAgent::chooseNewGoal(const double2 &newLoc, double epsilon, double2 &newGoal) {
-	double2 oldGoal = newGoal;
-	double2 center = double2(ENV_DIM / 2, ENV_DIM / 2);
-	if (newLoc.x < center.x && newLoc.y < center.y) {
-		if ((newLoc.x + epsilon >= 0.5 * ENV_DIM)
-			//&& (newLoc.y + epsilon > 0.3 * ENV_DIM - gateSize) 
-			//&& (newLoc.y - epsilon < 0.3 * ENV_DIM + gateSize)
-			)
-		{
-			newGoal.x = 0.9 * ENV_DIM;
-			newGoal.y = 0.3 * ENV_DIM;
-		}
+	/*if (newLoc.x < 0.25 * ENV_DIM) {
+		newGoal.x = 0.26 * ENV_DIM;
+		newGoal.y = 0.48 * ENV_DIM;
 	}
-	else if (newLoc.x > center.x && newLoc.y < center.y) {
-		if ((newLoc.x + epsilon >= 0.9 * ENV_DIM)
-			//&& (newLoc.y + epsilon > 0.3 * ENV_DIM - gateSize) 
-			//&& (newLoc.y - epsilon < 0.3 * ENV_DIM + gateSize)
-			)
-		{
-			//newGoal.x = ENV_DIM;
-			//newGoal.y = 0;
-		}
+	else */if (newLoc.x < 0.5 * ENV_DIM) {
+		newGoal.x = 0.51 * ENV_DIM;
+		newGoal.y = 0.27 * ENV_DIM;
 	}
-	else if (newLoc.x < center.x && newLoc.y > center.y) {
-		if ((newLoc.y - epsilon <= 0.5 * ENV_DIM)
-			//&& (newLoc.x + epsilon > 0.3 * ENV_DIM - gateSize) 
-			//&& (newLoc.x - epsilon < 0.3 * ENV_DIM + gateSize)
-			)
-		{
-			newGoal.x = 0.5 * ENV_DIM;
-			newGoal.y = 0.3 * ENV_DIM;
-		}
+	else if (newLoc.x < 0.75 * ENV_DIM) {
+		newGoal.x = 0.76 * ENV_DIM;
+		newGoal.y = 0.73 * ENV_DIM;
 	}
-	else if (newLoc.x > center.x && newLoc.y > center.y) {
-		if ((newLoc.x - epsilon <= 0.5 * ENV_DIM)
-			//&& (newLoc.y + epsilon > 0.7 * ENV_DIM - gateSize) 
-			//&& (newLoc.y - epsilon < 0.7 * ENV_DIM + gateSize)
-			)
-		{
-			newGoal.x = 0.3 * ENV_DIM;
-			newGoal.y = 0.5 * ENV_DIM;
-		}
+	else {
+		newGoal.x = 1.00 * ENV_DIM;
+		newGoal.y = 0.50 * ENV_DIM;
 	}
 }
 void SocialForceAgent::step(){
@@ -437,7 +403,7 @@ void SocialForceAgent::step(){
 
 	double goalTemp = goal.x;
 
-	//chooseNewGoal(newLoc, mass / cMass, newGoal);
+	chooseNewGoal(newLoc, mass / cMass, newGoal);
 
 	newLoc.x = correctCrossBoader(newLoc.x, ENV_DIM);
 	newLoc.y = correctCrossBoader(newLoc.y, ENV_DIM);
@@ -451,68 +417,37 @@ void SocialForceAgent::step(){
 void SocialForceAgent::init(int idx) {
 	this->color = Color();
 	this->contextId = idx;
-
-	this->cloneid = 0;
-
 	this->myOrigin = NULL;
 
 	SocialForceAgentData & dataLocal = this->data; //= &sfModel->originalAgents->dataArray[dataSlot];
-
 	dataLocal.agentPtr = this;
-	dataLocal.loc.x = (float)rand() / (float)RAND_MAX * ENV_DIM - 0.1;
-	dataLocal.loc.y = (float)rand() / (float)RAND_MAX * ENV_DIM - 0.1;
+	dataLocal.loc.x = (float)rand() / (float)RAND_MAX * ENV_DIM * 0.1;
+	dataLocal.loc.y = (float)rand() / (float)RAND_MAX * ENV_DIM;
+	//dataLocal.loc.x = ENV_DIM * 0.24 - 0.1;
+	//dataLocal.loc.y = ENV_DIM * 0.50 - 0.1;
 	dataLocal.velocity.x = 2;//4 * (this->random->uniform()-0.5);
 	dataLocal.velocity.y = 2;//4 * (this->random->uniform()-0.5);
 
 	dataLocal.v0 = 2;
 	dataLocal.mass = 50;
 	dataLocal.numNeighbor = 0;
-
 	dataLocal.goal = double2(ENV_DIM, 0.5 * ENV_DIM);
 	//chooseNewGoal(dataLocal.loc, 0, dataLocal.goal);
 
 	this->dataCopy = dataLocal;
 }
-/*
-void initNewClone(const SocialForceAgent &agent,
-SocialForceAgent *originPtr,
-int dataSlot,
-SocialForceClone *clone,
-int cloneid)
-{
-this->myWorld = clone->clonedWorld;
-this->color = clone->color;
+void SocialForceAgent::initNewClone(SocialForceAgent *parent, SocialForceClone *childClone) {
+	this->color = childClone->color;
+	this->contextId = parent->contextId;
+	this->myOrigin = parent;
+	this->myClone = childClone;
 
-this->cloneid = cloneid;
-this->id = agent.id;
-for (int i = 0; i < NUM_GATES; i++) {
-this->cloneidArray[i] = clone->cloneidArray[i];
-this->flagCloning[i] = 0; // or originPtr->flagCloning[i]?
-this->flagCloned[i] = 0; // or originPtr->flagCloned[i]?
+	this->data = parent->data;
+	this->dataCopy = parent->dataCopy;
+
+	this->data.agentPtr = this;
+	this->data.agentPtr = this;
 }
-this->myOrigin = originPtr;
-
-SocialForceAgentData dataLocal, dataCopyLocal;
-
-dataLocal = *(SocialForceAgentData*)agent.data;
-dataCopyLocal = *(SocialForceAgentData*)agent.dataCopy;
-
-dataLocal.agentPtr = this;
-dataCopyLocal.agentPtr = this;
-
-if (stepCount % 2 == 0) {
-this->data = clone->agents->dataInSlot(dataSlot);
-this->dataCopy = clone->agents->dataCopyInSlot(dataSlot);
-}
-else {
-this->data = clone->agents->dataCopyInSlot(dataSlot);
-this->dataCopy = clone->agents->dataInSlot(dataSlot);
-}
-
-*(SocialForceAgentData*)this->data = dataLocal;
-*(SocialForceAgentData*)this->dataCopy = dataCopyLocal;
-}
-*/
 
 void SocialForceClone::step() {
 	for (int i = 0; i < numElem; i++)
@@ -524,152 +459,31 @@ public:
 	SocialForceClone **cAll;
 	SocialForceAgent *agents;
 	SocialForceAgent **context;
-	int paintId;
-
-	/*
-	void step(SocialForceClone *clone) {
-	double2 c1(32, 32), c2(32, 96), c3(96, 32), c4(96, 96);
-	for (int i = 0; i < clone->numElem; i++) {
-	SimpleAgent &agent;// = clone->agents[i];
-	if (clone->pv[0] == 1 && length(agent.loc - c1) < 4) {
-	if (agent.loc.y < c1.y)
-	agent.locNext.y = agent.loc.y - 0.2;
-	else
-	agent.locNext.y = agent.loc.y + 0.2;
-	continue;
-	}
-	if (clone->pv[1] == 1 && length(agent.loc - c2) < 4) {
-	if (agent.loc.y < c2.y)
-	agent.locNext.y = agent.loc.y - 0.2;
-	else
-	agent.locNext.y = agent.loc.y + 0.2;
-	continue;
-	}
-	if (clone->pv[2] == 1 && length(agent.loc - c3) < 4) {
-	if (agent.loc.y < c3.y)
-	agent.locNext.y = agent.loc.y - 0.2;
-	else
-	agent.locNext.y = agent.loc.y + 0.2;
-	continue;
-	}
-	if (clone->pv[3] == 1 && length(agent.loc - c4) < 4) {
-	if (agent.loc.y < c4.y)
-	agent.locNext.y = agent.loc.y - 0.2;
-	else
-	agent.locNext.y = agent.loc.y + 0.2;
-	continue;
-	}
-	if (agent.loc.y > agent.locDefault.y)
-	agent.locNext.y = agent.loc.y - 0.2;
-	else if (agent.loc.y < agent.locDefault.y)
-	agent.locNext.y = agent.loc.y + 0.2;
-	agent.locNext.x = agent.loc.x + 0.2;
-	}
-	}
-	*/
-
-	void swapAll(SocialForceClone *clone) {
-		for (int i = 0; i < clone->numElem; i++) {
-			SocialForceAgent &agent = clone->agents[i];
-			agent.data = agent.dataCopy;
-		}
-	}
-
-	/*
-	bool cloningCondition(SocialForceAgent *agent, bool *childTakenMap,
-	SocialForceClone *parentClone, SocialForceClone *childClone) {
-	double2 c1(32, 32), c2(32, 96), c3(96, 32), c4(96, 96);
-	// if agent has been cloned?
-	if (agent != childClone->context[agent->contextId])
-	return false;
-
-	// active cloning condition
-	double2 &loc = agent->loc;
-	if (parentClone->pv[0] != childClone->pv[0])
-	if (length(loc - c1) < 6) return true;
-	if (parentClone->pv[1] != childClone->pv[1])
-	if (length(loc - c2) < 8) return true;
-	if (parentClone->pv[2] != childClone->pv[2])
-	if (length(loc - c3) < 10) return true;
-	if (parentClone->pv[3] != childClone->pv[3])
-	if (length(loc - c4) < 12) return true;
-
-	// passive cloning condition
-
-	//int minx = max((loc.x - RADIUS_I) / (ENV_DIM / CELL_DIM), 0);
-	//int miny = max((loc.y - RADIUS_I) / (ENV_DIM / CELL_DIM), 0);
-	//int maxx = min((loc.x + RADIUS_I) / (ENV_DIM / CELL_DIM), CELL_DIM - 1);
-	//int maxy = min((loc.y + RADIUS_I) / (ENV_DIM / CELL_DIM), CELL_DIM - 1);
-	//for (int i = minx; i <= maxx; i++)
-	//for (int j = miny; j <= maxy; j++)
-	//if (childTakenMap[i * CELL_DIM + j])
-	//return true;
-
-
-	// pass all the check, don't need to be cloned
-	return false;
-	}
-	*/
-
-	/*
-	void performClone(SocialForceClone *parentClone, SocialForceClone *childClone) {
-	// 1. copy the context of parent clone
-	memcpy(childClone->context, parentClone->context, NUM_CAP * sizeof(void*));
-
-	// 2. update the context with agents of its own
-	for (int i = 0; i < childClone->numElem; i++) {
-	SocialForceAgent *agent = &childClone->agents[i];
-	childClone->context[agent->contextId] = agent;
-	}
-
-	// 3. Perform cloning
-	// 3.1 construct passive cloning map
-	double2 dim(ENV_DIM, ENV_DIM);
-	bool *takenMap = new bool[CELL_DIM * CELL_DIM];
-	memset(takenMap, 0, sizeof(bool) * CELL_DIM * CELL_DIM);
-	for (int i = 0; i < childClone->numElem; i++) {
-	const SocialForceAgent &agent = childClone->agents[i];
-	int takenId = agent.loc.x / ENV_DIM;
-	takenId = takenId * CELL_DIM + agent.loc.y / ENV_DIM;
-	takenMap[takenId] = true;
-	}
-
-	// 3.2 perform cloning
-	for (int i = 0; i < NUM_CAP; i++) {
-	SocialForceAgent *agent = parentClone->context[i];
-	if (cloningCondition(agent, takenMap, parentClone, childClone)) {
-	SocialForceAgent &childAgent = childClone->agents[childClone->numElem];
-	childAgent = *agent;
-	childAgent.color = childClone->color;
-	childClone->context[childAgent.contextId] = &childAgent;
-	childClone->numElem++;
-	}
-	}
-	delete takenMap;
-	}
-	*/
+	int paintId = 1;
+	int totalClone = 4;
+	int stepCount = 0;
+	int rootCloneId = 0;
 
 	int initSimClone() {
-		srand(time(NULL));
+		srand(0);
 		agents = new SocialForceAgent[NUM_CAP];
 		context = new SocialForceAgent*[NUM_CAP];
-		paintId = 0;
 
-		cAll = new SocialForceClone*[16];
-		char message[200];
-		for (int i = 0; i < 16; i++) {
-			cAll[i] = new SocialForceClone();
-			cAll[i]->pv[0] = i & 1;
-			cAll[i]->pv[1] = (i >> 1) & 1;
-			cAll[i]->pv[2] = (i >> 2) & 1;
-			cAll[i]->pv[3] = (i >> 3) & 1;
-			sprintf_s(message, 200, "[%d, %d, %d, %d]\n", cAll[i]->pv[0],
+		cAll = new SocialForceClone*[totalClone];
+		WCHAR message[200];
+		int j = 0;
+		for (int i = 0; i < totalClone; i++) {
+			int pv[NUM_PARAM];
+			pv[0] = i & 1;			pv[1] = (i >> 1) & 1;
+			pv[2] = (i >> 2) & 1;
+			cAll[i] = new SocialForceClone(pv);
+
+			swprintf_s(message, 200, L"[%d, %d, %d, %d]\n", cAll[i]->pv[0],
 				cAll[i]->pv[1], cAll[i]->pv[2], cAll[i]->pv[3]);
 		}
-		OutputDebugStringA((LPCSTR)message);
+		OutputDebugString(message);
 
 		for (int i = 0; i < NUM_CAP; i++) {
-
 			//float rx = (float)rand() / (float)RAND_MAX;
 			//float ry = (float)rand() / (float)RAND_MAX;
 			float rx = (float)(i / 32) / (float)32;
@@ -681,58 +495,112 @@ public:
 			context[i] = &agents[i];
 		}
 
+		cAll[rootCloneId]->context = context;
+		cAll[rootCloneId]->agents = agents;
+		cAll[rootCloneId]->numElem = NUM_CAP;
+		for (int j = 0; j < NUM_CAP; j++)
+			cAll[rootCloneId]->cloneFlag[j] = true;
+
 		return EXIT_SUCCESS;
 	}
 
+	bool cloningCondition(SocialForceAgent *agent, bool *childTakenMap,
+		SocialForceClone *parentClone, SocialForceClone *childClone) {
+		double2 
+			//c1(0.25 * ENV_DIM, 0.50 * ENV_DIM),
+			c1(0.50 * ENV_DIM, 0.25 * ENV_DIM),
+			c2(0.75 * ENV_DIM, 0.75 * ENV_DIM);
+
+		// if agent has been cloned?
+		if (childClone->cloneFlag[agent->contextId] == true)
+			return false;
+
+		// active cloning condition
+		double2 &loc = agent->data.loc;
+		if (parentClone->pv[0] != childClone->pv[0])
+			if (length(loc - c1) < 6) return true;
+		if (parentClone->pv[1] != childClone->pv[1])
+			if (length(loc - c2) < 8) return true;
+		//if (parentClone->pv[2] != childClone->pv[2])
+		//	if (length(loc - c3) < 10) return true;
+
+		// passive cloning condition
+		int minx = max((loc.x - RADIUS_I) / CELL_DIM, 0);
+		int miny = max((loc.y - RADIUS_I) / CELL_DIM, 0);
+		int maxx = min((loc.x + RADIUS_I) / CELL_DIM, NUM_CELL - 1);
+		int maxy = min((loc.y + RADIUS_I) / CELL_DIM, NUM_CELL - 1);
+		for (int i = minx; i <= maxx; i++)
+			for (int j = miny; j <= maxy; j++)
+				if (childTakenMap[i * NUM_CELL + j])
+					return true;
+
+		// pass all the check, don't need to be cloned
+		return false;
+	}
+	void performClone(SocialForceClone *parentClone, SocialForceClone *childClone) {
+		// 1. copy the context of parent clone
+		memcpy(childClone->context, parentClone->context, NUM_CAP * sizeof(void*));
+
+		// 2. update the context with agents of its own
+		for (int i = 0; i < childClone->numElem; i++) {
+			SocialForceAgent *agent = &childClone->agents[i];
+			childClone->context[agent->contextId] = agent;
+		}
+
+		// 3. construct passive cloning map
+		double2 dim(ENV_DIM, ENV_DIM);
+		memset(childClone->takenMap, 0, sizeof(bool) * NUM_CELL * NUM_CELL);
+		for (int i = 0; i < childClone->numElem; i++) {
+			const SocialForceAgent &agent = childClone->agents[i];
+			int takenId = agent.data.loc.x / CELL_DIM;
+			takenId = takenId * NUM_CELL + agent.data.loc.y / CELL_DIM;
+			childClone->takenMap[takenId] = true;
+		}
+		
+		// 4. perform active and passive cloning (in cloningCondition checking)
+		for (int i = 0; i < NUM_CAP; i++) {
+			SocialForceAgent *agent = parentClone->context[i];
+			if (cloningCondition(agent, childClone->takenMap, parentClone, childClone)) {
+				SocialForceAgent &childAgent = childClone->agents[childClone->numElem];
+				childAgent.initNewClone(agent, childClone);
+				childClone->context[childAgent.contextId] = &childAgent;
+				childClone->cloneFlag[childAgent.contextId] = true;
+				childClone->numElem++;
+			}
+		}
+	}
+
+	void swapAll(SocialForceClone *clone) {
+		for (int i = 0; i < clone->numElem; i++) {
+			SocialForceAgent &agent = clone->agents[i];
+			agent.data = agent.dataCopy;
+		}
+	}
+
+	void compareAndEliminate(SocialForceClone *parentClone, SocialForceClone *childClone) {
+		for (int i = 0; i < childClone->numElem; i++) {
+			SocialForceAgent &agent = childClone->agents[i];
+		}
+	}
+
 	void stepApp() {
-		//cAll[15]->context = context;
-		//performClone(cAll[15], cAll[10]);
-		//cout << cAll[10]->numElem << " ";
-		//for (int i = 0; i < 16; i++) {
+		stepCount++;
+		//cAll[rootCloneId]->step();
+		//swapAll(cAll[rootCloneId]);
 
-		//int stepCount = 0;
-
-		int i = 0;
-		//for (int i = 0; i < 16; i++) {
-		cAll[i]->context = context;
-		cAll[i]->agents = agents;
-		cAll[i]->numElem = NUM_CAP;
-
-		//while (stepCount++ < 100) {
-		cAll[i]->step();
-		swapAll(cAll[i]);
-		/*for (int j = 0; j < 16; j++) {
-			performClone(cAll[i], cAll[j]);
-			step(cAll[j]);
-			cout << cAll[j]->numElem << " ";
-			}
-			for (int j = 0; j < 16; j++) {
+		for (int j = 0; j < totalClone; j++) {
+			if (j == rootCloneId)
+				continue;
+			performClone(cAll[rootCloneId], cAll[j]);	
+		}
+		for (int j = 0; j < totalClone; j++) {
+			cAll[j]->step();
+		}
+		for (int j = 0; j < totalClone; j++) {
 			swapAll(cAll[j]);
-			}
-			cout << endl;
-			*/
-
-		//}
-		//}
-
-		/* start processing */
-		//int stepCount = 0;
-		//cAll[0]->context = context;
-		//cAll[0]->agents = agents;
-		//cAll[0]->numElem = NUM_CAP;
-		//while (stepCount++ < 100) {
-		//	step(cAll[0]);
-		//	performClone(cAll[0], cAll[1]);
-		//	step(cAll[1]);
-		//	performClone(cAll[1], cAll[2]);
-		//	step(cAll[2]);
-
-		//	cout << cAll[2]->numElem << " " << cAll[2]->agents[0].loc.x << " "
-		//		<< cAll[2]->agents[0].loc.y << endl;
-		//	
-		//	swapAll(cAll[0]);
-		//	swapAll(cAll[1]);
-		//	swapAll(cAll[2]);
-		//}
+		}
+		for (int j = 0; j < totalClone; j++) {
+			// compare and eliminate
+		}
 	}
 };

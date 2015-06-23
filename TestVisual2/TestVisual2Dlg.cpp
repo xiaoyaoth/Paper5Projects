@@ -67,7 +67,6 @@ BEGIN_MESSAGE_MAP(CTestVisual2Dlg, CDialogEx)
 	ON_WM_SYSCOMMAND()
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
-	ON_BN_CLICKED(IDOK, &CTestVisual2Dlg::OnBnClickedOk)
 	ON_WM_TIMER()
 	ON_WM_ERASEBKGND()
 	ON_WM_LBUTTONDBLCLK()
@@ -107,15 +106,15 @@ BOOL CTestVisual2Dlg::OnInitDialog()
 
 	// TODO: Add extra initialization here
 	pDC = this->GetDC();
-	screenWidth = 400;
-	screenHeight = 400;
+	screenWidth = 320;
+	screenHeight = 320;
 	redPen = new CPen(PS_SOLID, 2, RGB(255, 0, 0));
 	bluePen = new CPen(PS_SOLID, 2, RGB(0, 0, 255));
 	greenPen = new CPen(PS_SOLID, 2, RGB(0, 255, 0));
 	redBrush = new CBrush(RGB(255, 0, 0));
 	blueBrush = new CBrush(RGB(0, 0, 255));
 	greenBrush = new CBrush(RGB(0, 255, 0));
-	MoveWindow(0, 0, screenWidth, screenHeight, true);
+	MoveWindow(0, 0, screenWidth + 18, screenHeight + 40, true);
 	SetTimer(1, 10, NULL);
 	cloneApp.initSimClone();
 
@@ -172,31 +171,6 @@ HCURSOR CTestVisual2Dlg::OnQueryDragIcon()
 }
 
 
-
-void CTestVisual2Dlg::OnBnClickedOk()
-{
-	// TODO: Add your control notification handler code here
-
-	/*
-	CRect rect;
-	GetClientRect(&rect);
-	rect.bottom = 100;
-	rect.top = 20;
-	rect.left = 20;
-	rect.right = 100;
-	CClientDC dc(this);
-	CBrush *blk_brush = new CBrush(RGB(0, 0, 0));
-	CPen *pen = new CPen(PS_SOLID, 2, RGB(0, 0, 255));
-	dc.SelectObject(pen);
-	dc.SelectObject(blk_brush);
-	dc.Rectangle(rect);
-
-	dc.Ellipse(100,100,120,150);
-	*/
-
-}
-
-
 void CTestVisual2Dlg::OnTimer(UINT_PTR nIDEvent)
 {
 	// TODO: Add your message handler code here and/or call default
@@ -218,7 +192,6 @@ BOOL CTestVisual2Dlg::OnEraseBkgnd(CDC* pDC)
 	return FALSE;
 }
 
-
 void CTestVisual2Dlg::myDraw()
 {
 	CClientDC dc(this);
@@ -230,10 +203,46 @@ void CTestVisual2Dlg::myDraw()
 	CRect rect0(0, 0, screenWidth, screenHeight + 50);
 	_memDC.Rectangle(rect0);
 
+	// before draw
 	_memDC.SelectStockObject(NULL_BRUSH);
 	int paintId = cloneApp.paintId;
 	SocialForceClone *c = cloneApp.cAll[paintId];
 
+	// draw title
+	WCHAR title[40];
+	swprintf_s(title, 40, L"clone: %d - numElem: %d", cloneApp.paintId, c->numElem);
+	this->SetWindowText((LPCTSTR)title);
+	
+	// draw passive clone area 
+	for (int i = 0; i < NUM_CELL; i++) {
+		for (int j = 0; j < NUM_CELL; j++) {
+			if (cloneApp.cAll[paintId]->takenMap[i * NUM_CELL + j]) {
+				char rgb = 120;
+				CPen p(PS_SOLID, 0, RGB(rgb, rgb, rgb));
+				CBrush b(RGB(rgb * 2, rgb, rgb));
+				_memDC.SelectObject(p);
+				_memDC.SelectObject(b);
+				int wscale = screenWidth / NUM_CELL;
+				int hscale = screenHeight / NUM_CELL;
+				_memDC.Rectangle(i * wscale, j * hscale, (i + 1) * wscale, (j + 1) * hscale);
+			}
+		}
+	}
+	
+	// draw grid
+	int numLine = NUM_CELL;
+	for (int i = 0; i < numLine; i++) {
+		char rgb = 100;
+		CPen p(PS_DOT, 0, RGB(rgb, rgb, rgb));
+		_memDC.SelectObject(p);
+		_memDC.MoveTo(i * screenWidth / NUM_CELL, 0);
+		_memDC.LineTo(i * screenWidth / NUM_CELL, screenHeight);
+		_memDC.MoveTo(0, i * screenHeight / NUM_CELL);
+		_memDC.LineTo(screenWidth, i * screenHeight / NUM_CELL);
+	}
+	
+
+	// draw wall
 	for (int i = 0; i < NUM_WALLS; i++) {
 		CPen p(PS_SOLID, 5, RGB(0, 0, 0));
 		_memDC.SelectObject(p);
@@ -245,6 +254,7 @@ void CTestVisual2Dlg::myDraw()
 		_memDC.LineTo(x, y);
 	}
 
+	// draw agent
 	for (int i = 0; i < NUM_CAP; i++) {
 		SocialForceAgent *a = c->context[i];
 		CPen p(PS_SOLID, 2, RGB(a->color.r, a->color.g, a->color.b));
@@ -255,48 +265,9 @@ void CTestVisual2Dlg::myDraw()
 		double y = c->context[i]->data.loc.y / ENV_DIM * screenHeight;
 		_memDC.Ellipse(x - 3, y - 3, x + 3, y + 3);
 	}
-	_memDC.SelectObject(greenPen);
-	_memDC.SelectObject(greenBrush);
-	for (int i = 0; i < NUM_PARAM; i++) {
-		double2 c1(32, 32), c2(32, 96), c3(96, 32), c4(96, 96);
-		double x1, y1, x2, y2;
-		if (c->pv[0] == 1)	{
-			x1 = (c1.x - 3) / ENV_DIM * screenWidth;
-			y1 = (c1.y - 3) / ENV_DIM * screenHeight;
-			x2 = (c1.x + 3) / ENV_DIM * screenWidth;
-			y2 = (c1.y + 3) / ENV_DIM * screenHeight;
-			_memDC.Ellipse(x1, y1, x2, y2);
-		}
-		if (c->pv[1] == 1)	{
-			x1 = (c2.x - 3) / ENV_DIM * screenWidth;
-			y1 = (c2.y - 3) / ENV_DIM * screenHeight;
-			x2 = (c2.x + 3) / ENV_DIM * screenWidth;
-			y2 = (c2.y + 3) / ENV_DIM * screenHeight;
-			_memDC.Ellipse(x1, y1, x2, y2);
-		}
-		if (c->pv[2] == 1)	{
-			x1 = (c3.x - 3) / ENV_DIM * screenWidth;
-			y1 = (c3.y - 3) / ENV_DIM * screenHeight;
-			x2 = (c3.x + 3) / ENV_DIM * screenWidth;
-			y2 = (c3.y + 3) / ENV_DIM * screenHeight;
-			_memDC.Ellipse(x1, y1, x2, y2);
-		}
-		if (c->pv[3] == 1)	{
-			x1 = (c4.x - 3) / ENV_DIM * screenWidth;
-			y1 = (c4.y - 3) / ENV_DIM * screenHeight;
-			x2 = (c4.x + 3) / ENV_DIM * screenWidth;
-			y2 = (c4.y + 3) / ENV_DIM * screenHeight;
-			_memDC.Ellipse(x1, y1, x2, y2);
-		}
-	}
 
-	//for (int i = 0; i < 100; i++) {
-	//	double x = rand() % screenWidth;
-	//	double y = rand() % screenHeight;
-	//	_memDC.Ellipse(x - 3, y - 3, x + 3, y + 3);
-	//}
-
-	pDC->BitBlt(0, 0, screenWidth, screenHeight + 50, &_memDC, 0, 0, SRCCOPY);
+	// after draw
+	pDC->BitBlt(0, 0, screenWidth, screenHeight, &_memDC, 0, 0, SRCCOPY);
 	_memBitmap.DeleteObject();
 	_memDC.DeleteDC();
 
@@ -307,6 +278,6 @@ void CTestVisual2Dlg::myDraw()
 void CTestVisual2Dlg::OnLButtonDblClk(UINT nFlags, CPoint point)
 {
 	// TODO: Add your message handler code here and/or call default
-	cloneApp.paintId++;
+	cloneApp.paintId = (cloneApp.paintId + 1) % cloneApp.totalClone;
 	CDialogEx::OnLButtonDblClk(nFlags, point);
 }
