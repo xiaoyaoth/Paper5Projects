@@ -2,6 +2,7 @@
 #include <math.h>
 #include <ctime>
 #include <Windows.h>
+#include <algorithm>
 
 using namespace std;
 
@@ -171,10 +172,49 @@ public:
 	void init(int idx);
 	void initNewClone(SocialForceAgent *agent, SocialForceClone *clone);
 };
+
+class AgentPool {
+public:
+	SocialForceAgent *agentArray;
+	SocialForceAgent **agentPtrArray;
+	bool *takenFlags;
+	int numElem;
+
+	AgentPool(int numCap) {
+		numElem = 0;
+		agentArray = new SocialForceAgent[numCap];
+		agentPtrArray = new SocialForceAgent*[numCap];
+		takenFlags = new bool[numCap];
+		for (int i = 0; i < numCap; i++) {
+			agentPtrArray[i] = &agentArray[i];
+			takenFlags = 0;
+		}
+	}
+
+	void reorder(int l, int r) {
+		int i = l, j = l;
+		for (; j < r; j++) {
+			if (takenFlags[j] == false) {
+				swap<SocialForceAgent*>(agentPtrArray, i, j);
+				swap<bool>(takenFlags, i, j);
+				i++;
+			}
+		}
+	}
+
+	template<class T>
+	inline void swap(T * ar, int a, int b) {
+		T t1 = ar[a];
+		ar[a] = ar[b];
+		ar[b] = t1;
+	}
+};
+
 class SocialForceClone {
 public:
-	SocialForceAgent *agents;
-	int numElem;
+	//SocialForceAgent *agents;
+	AgentPool *ap;
+	//int numElem;
 	SocialForceAgent **context;
 	bool *cloneFlag;
 	int pv[NUM_PARAM];
@@ -183,8 +223,8 @@ public:
 	bool takenMap[NUM_CELL * NUM_CELL];
 
 	SocialForceClone(int pv1[NUM_PARAM]) {
-		agents = new SocialForceAgent[NUM_CAP];
-		numElem = 0;
+		ap = new AgentPool(NUM_CAP);
+		//agents = new SocialForceAgent[NUM_CAP];
 		context = new SocialForceAgent*[NUM_CAP];
 		cloneFlag = new bool[NUM_CAP];
 		memset(context, 0, sizeof(void*) * NUM_CAP);
@@ -448,17 +488,14 @@ void SocialForceAgent::initNewClone(SocialForceAgent *parent, SocialForceClone *
 	this->data.agentPtr = this;
 	this->data.agentPtr = this;
 }
-
 void SocialForceClone::step() {
-	for (int i = 0; i < numElem; i++)
-		agents[i].step();
+	for (int i = 0; i < ap->numElem; i++)
+		ap->agentPtrArray[i]->step();
 }
 
 class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
-	SocialForceAgent *agents;
-	SocialForceAgent **context;
 	int paintId = 1;
 	int totalClone = 4;
 	int stepCount = 0;
@@ -466,8 +503,6 @@ public:
 
 	int initSimClone() {
 		srand(0);
-		agents = new SocialForceAgent[NUM_CAP];
-		context = new SocialForceAgent*[NUM_CAP];
 
 		cAll = new SocialForceClone*[totalClone];
 		WCHAR message[200];
@@ -483,6 +518,9 @@ public:
 		}
 		OutputDebugString(message);
 
+		SocialForceAgent *agents = cAll[rootCloneId]->ap->agentArray;
+		SocialForceAgent **context = cAll[rootCloneId]->context;
+
 		for (int i = 0; i < NUM_CAP; i++) {
 			//float rx = (float)rand() / (float)RAND_MAX;
 			//float ry = (float)rand() / (float)RAND_MAX;
@@ -495,9 +533,7 @@ public:
 			context[i] = &agents[i];
 		}
 
-		cAll[rootCloneId]->context = context;
-		cAll[rootCloneId]->agents = agents;
-		cAll[rootCloneId]->numElem = NUM_CAP;
+		cAll[rootCloneId]->ap->numElem = NUM_CAP;
 		for (int j = 0; j < NUM_CAP; j++)
 			cAll[rootCloneId]->cloneFlag[j] = true;
 
@@ -542,16 +578,16 @@ public:
 		memcpy(childClone->context, parentClone->context, NUM_CAP * sizeof(void*));
 
 		// 2. update the context with agents of its own
-		for (int i = 0; i < childClone->numElem; i++) {
-			SocialForceAgent *agent = &childClone->agents[i];
+		for (int i = 0; i < childClone->ap->numElem; i++) {
+			SocialForceAgent *agent = childClone->ap->agentPtrArray[i];
 			childClone->context[agent->contextId] = agent;
 		}
 
 		// 3. construct passive cloning map
 		double2 dim(ENV_DIM, ENV_DIM);
 		memset(childClone->takenMap, 0, sizeof(bool) * NUM_CELL * NUM_CELL);
-		for (int i = 0; i < childClone->numElem; i++) {
-			const SocialForceAgent &agent = childClone->agents[i];
+		for (int i = 0; i < childClone->ap->numElem; i++) {
+			const SocialForceAgent &agent = *childClone->ap->agentPtrArray[i];
 			int takenId = agent.data.loc.x / CELL_DIM;
 			takenId = takenId * NUM_CELL + agent.data.loc.y / CELL_DIM;
 			childClone->takenMap[takenId] = true;
@@ -561,25 +597,30 @@ public:
 		for (int i = 0; i < NUM_CAP; i++) {
 			SocialForceAgent *agent = parentClone->context[i];
 			if (cloningCondition(agent, childClone->takenMap, parentClone, childClone)) {
-				SocialForceAgent &childAgent = childClone->agents[childClone->numElem];
+				SocialForceAgent &childAgent = *childClone->ap->agentPtrArray[childClone->ap->numElem];
 				childAgent.initNewClone(agent, childClone);
+				childClone->ap->takenFlags[childClone->ap->numElem] = true;
 				childClone->context[childAgent.contextId] = &childAgent;
 				childClone->cloneFlag[childAgent.contextId] = true;
-				childClone->numElem++;
+				childClone->ap->numElem++;
 			}
 		}
 	}
 
 	void swapAll(SocialForceClone *clone) {
-		for (int i = 0; i < clone->numElem; i++) {
-			SocialForceAgent &agent = clone->agents[i];
+		for (int i = 0; i < clone->ap->numElem; i++) {
+			SocialForceAgent &agent = *clone->ap->agentPtrArray[i];
 			agent.data = agent.dataCopy;
 		}
 	}
 
 	void compareAndEliminate(SocialForceClone *parentClone, SocialForceClone *childClone) {
-		for (int i = 0; i < childClone->numElem; i++) {
-			SocialForceAgent &agent = childClone->agents[i];
+		for (int i = 0; i < childClone->ap->numElem; i++) {
+			SocialForceAgent &childAgent = *childClone->ap->agentPtrArray[i];
+			SocialForceAgent &parentAgent = *childAgent.myOrigin;
+			if (length(childAgent.data.velocity - parentAgent.data.velocity) == 0) {
+				childClone->ap->takenFlags[i] = false;
+			}
 		}
 	}
 

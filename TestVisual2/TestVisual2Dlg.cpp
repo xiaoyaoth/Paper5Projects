@@ -210,7 +210,7 @@ void CTestVisual2Dlg::myDraw()
 
 	// draw title
 	WCHAR title[40];
-	swprintf_s(title, 40, L"clone: %d - numElem: %d", cloneApp.paintId, c->numElem);
+	swprintf_s(title, 40, L"clone: %d - numElem: %d", cloneApp.paintId, c->ap->numElem);
 	this->SetWindowText((LPCTSTR)title);
 	
 	// draw passive clone area 
