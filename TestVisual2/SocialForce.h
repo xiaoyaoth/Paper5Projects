@@ -187,19 +187,21 @@ public:
 		takenFlags = new bool[numCap];
 		for (int i = 0; i < numCap; i++) {
 			agentPtrArray[i] = &agentArray[i];
-			takenFlags = 0;
+			takenFlags[i] = 0;
 		}
 	}
 
-	void reorder(int l, int r) {
+	void reorder() {
+		int l = 0; int r = numElem;
 		int i = l, j = l;
 		for (; j < r; j++) {
-			if (takenFlags[j] == false) {
+			if (takenFlags[j] == true) {
 				swap<SocialForceAgent*>(agentPtrArray, i, j);
 				swap<bool>(takenFlags, i, j);
 				i++;
 			}
 		}
+		numElem = i;
 	}
 
 	template<class T>
@@ -497,7 +499,7 @@ class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
 	int paintId = 1;
-	int totalClone = 4;
+	int totalClone = 3;
 	int stepCount = 0;
 	int rootCloneId = 0;
 
@@ -561,6 +563,7 @@ public:
 		//	if (length(loc - c3) < 10) return true;
 
 		// passive cloning condition
+		
 		int minx = max((loc.x - RADIUS_I) / CELL_DIM, 0);
 		int miny = max((loc.y - RADIUS_I) / CELL_DIM, 0);
 		int maxx = min((loc.x + RADIUS_I) / CELL_DIM, NUM_CELL - 1);
@@ -598,8 +601,8 @@ public:
 			SocialForceAgent *agent = parentClone->context[i];
 			if (cloningCondition(agent, childClone->takenMap, parentClone, childClone)) {
 				SocialForceAgent &childAgent = *childClone->ap->agentPtrArray[childClone->ap->numElem];
-				childAgent.initNewClone(agent, childClone);
 				childClone->ap->takenFlags[childClone->ap->numElem] = true;
+				childAgent.initNewClone(agent, childClone);
 				childClone->context[childAgent.contextId] = &childAgent;
 				childClone->cloneFlag[childAgent.contextId] = true;
 				childClone->ap->numElem++;
@@ -615,13 +618,21 @@ public:
 	}
 
 	void compareAndEliminate(SocialForceClone *parentClone, SocialForceClone *childClone) {
+		wchar_t message[20];
 		for (int i = 0; i < childClone->ap->numElem; i++) {
 			SocialForceAgent &childAgent = *childClone->ap->agentPtrArray[i];
 			SocialForceAgent &parentAgent = *childAgent.myOrigin;
-			if (length(childAgent.data.velocity - parentAgent.data.velocity) == 0) {
+			if (length(childAgent.data.velocity - parentAgent.data.velocity) == 0 &&
+				length(childAgent.data.loc -parentAgent.data.loc) == 0) {
 				childClone->ap->takenFlags[i] = false;
+				childClone->cloneFlag[childAgent.contextId] = false;
 			}
+			/*else {
+				swprintf_s(message, 20, L"not false: %d\n", i);
+				OutputDebugString(message);
+			}*/
 		}
+		childClone->ap->reorder();
 	}
 
 	void stepApp() {
@@ -642,6 +653,9 @@ public:
 		}
 		for (int j = 0; j < totalClone; j++) {
 			// compare and eliminate
+			if (j == rootCloneId)
+				continue;
+			compareAndEliminate(cAll[rootCloneId], cAll[j]);
 		}
 	}
 };

@@ -217,9 +217,8 @@ void CTestVisual2Dlg::myDraw()
 	for (int i = 0; i < NUM_CELL; i++) {
 		for (int j = 0; j < NUM_CELL; j++) {
 			if (cloneApp.cAll[paintId]->takenMap[i * NUM_CELL + j]) {
-				char rgb = 120;
-				CPen p(PS_SOLID, 0, RGB(rgb, rgb, rgb));
-				CBrush b(RGB(rgb * 2, rgb, rgb));
+				CPen p(PS_SOLID, 0, RGB(255, 204, 204));
+				CBrush b(RGB(255, 204, 204));
 				_memDC.SelectObject(p);
 				_memDC.SelectObject(b);
 				int wscale = screenWidth / NUM_CELL;

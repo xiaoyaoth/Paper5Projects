@@ -17,12 +17,13 @@ inline void swap(T * ar, int a, int b) {
 void reorder(int l, int r) {
 	int i = l, j = l;
 	for (; j < r; j++) {
-		if (takenFlags[j] == false) {
+		if (takenFlags[j] == true) {
 			swap<int>(indexes, i, j);
 			swap<bool>(takenFlags, i, j);
 			i++;
 		}
 	}
+	cout << i << endl;
 }
 
 int main() {
