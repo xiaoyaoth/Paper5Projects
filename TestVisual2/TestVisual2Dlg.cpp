@@ -106,8 +106,8 @@ BOOL CTestVisual2Dlg::OnInitDialog()
 
 	// TODO: Add extra initialization here
 	pDC = this->GetDC();
-	screenWidth = 320;
-	screenHeight = 320;
+	screenWidth = 640;
+	screenHeight = 640;
 	redPen = new CPen(PS_SOLID, 2, RGB(255, 0, 0));
 	bluePen = new CPen(PS_SOLID, 2, RGB(0, 0, 255));
 	greenPen = new CPen(PS_SOLID, 2, RGB(0, 255, 0));
@@ -116,6 +116,7 @@ BOOL CTestVisual2Dlg::OnInitDialog()
 	greenBrush = new CBrush(RGB(0, 255, 0));
 	MoveWindow(0, 0, screenWidth + 18, screenHeight + 40, true);
 	SetTimer(1, 10, NULL);
+
 	cloneApp.initSimClone();
 
 	return TRUE;  // return TRUE  unless you set the focus to a control
@@ -210,7 +211,7 @@ void CTestVisual2Dlg::myDraw()
 
 	// draw title
 	WCHAR title[40];
-	swprintf_s(title, 40, L"clone: %d - numElem: %d", cloneApp.paintId, c->ap->numElem);
+	swprintf_s(title, 40, L"clone: %d - numElem: %d, step: %d", cloneApp.paintId, c->ap->numElem, cloneApp.stepCount);
 	this->SetWindowText((LPCTSTR)title);
 	
 	// draw passive clone area 

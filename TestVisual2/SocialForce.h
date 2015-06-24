@@ -133,7 +133,7 @@ inline double2 operator-(const double2& a, const double2& b)
 #define CELL_DIM 8
 #define RADIUS_I 5
 
-#define NUM_WALLS 4
+#define NUM_WALLS 6
 
 class SocialForceAgent;
 class SocialForceClone;
@@ -222,6 +222,7 @@ public:
 	int pv[NUM_PARAM];
 	Color color;
 	obstacleLine walls[6];
+	obstacleLine gates[3];
 	bool takenMap[NUM_CELL * NUM_CELL];
 
 	SocialForceClone(int pv1[NUM_PARAM]) {
@@ -233,12 +234,12 @@ public:
 		memset(cloneFlag, 0, sizeof(bool) * NUM_CAP);
 		color = Color();
 		memcpy(pv, pv1, sizeof(int) * NUM_PARAM);
-		//walls[0].init(0.25 * ENV_DIM, -0.10 * ENV_DIM, 0.25 * ENV_DIM, (0.45 - pv[0] * 0.05) * ENV_DIM);
-		//walls[1].init(0.25 * ENV_DIM,  0.50 * ENV_DIM, 0.25 * ENV_DIM, 1.10 * ENV_DIM);
-		walls[0].init(0.50 * ENV_DIM, -0.10 * ENV_DIM, 0.50 * ENV_DIM, (0.25 - pv[0] * 0.05) * ENV_DIM);
-		walls[1].init(0.50 * ENV_DIM,  0.30 * ENV_DIM, 0.50 * ENV_DIM, 1.10 * ENV_DIM);
-		walls[2].init(0.75 * ENV_DIM, -0.10 * ENV_DIM, 0.75 * ENV_DIM, (0.70 - pv[1] * 0.05) * ENV_DIM);
-		walls[3].init(0.75 * ENV_DIM,  0.75 * ENV_DIM, 0.75 * ENV_DIM, 1.10 * ENV_DIM);
+		walls[0].init(0.25 * ENV_DIM, -0.10 * ENV_DIM, 0.25 * ENV_DIM, (0.45 - pv[0] * 0.05) * ENV_DIM);
+		walls[1].init(0.25 * ENV_DIM,  0.50 * ENV_DIM, 0.25 * ENV_DIM, 1.10 * ENV_DIM);
+		walls[2].init(0.50 * ENV_DIM, -0.10 * ENV_DIM, 0.50 * ENV_DIM, (0.25 - pv[1] * 0.05) * ENV_DIM);
+		walls[3].init(0.50 * ENV_DIM,  0.30 * ENV_DIM, 0.50 * ENV_DIM, 1.10 * ENV_DIM);
+		walls[4].init(0.75 * ENV_DIM, -0.10 * ENV_DIM, 0.75 * ENV_DIM, (0.70 - pv[2] * 0.05) * ENV_DIM);
+		walls[5].init(0.75 * ENV_DIM,  0.75 * ENV_DIM, 0.75 * ENV_DIM, 1.10 * ENV_DIM);
 	}
 	void step();
 };
@@ -373,11 +374,11 @@ void SocialForceAgent::computeSocialForceRoom(SocialForceAgentData &dataLocal, d
 	dataLocal.numNeighbor = neighborCount;
 }
 void SocialForceAgent::chooseNewGoal(const double2 &newLoc, double epsilon, double2 &newGoal) {
-	/*if (newLoc.x < 0.25 * ENV_DIM) {
+	if (newLoc.x < 0.25 * ENV_DIM) {
 		newGoal.x = 0.26 * ENV_DIM;
 		newGoal.y = 0.48 * ENV_DIM;
 	}
-	else */if (newLoc.x < 0.5 * ENV_DIM) {
+	else if (newLoc.x < 0.5 * ENV_DIM) {
 		newGoal.x = 0.51 * ENV_DIM;
 		newGoal.y = 0.27 * ENV_DIM;
 	}
@@ -498,10 +499,10 @@ void SocialForceClone::step() {
 class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
-	int paintId = 1;
-	int totalClone = 3;
+	int paintId = 5;
+	int totalClone = 8;
 	int stepCount = 0;
-	int rootCloneId = 0;
+	int rootCloneId = 1;
 
 	int initSimClone() {
 		srand(0);
@@ -528,9 +529,9 @@ public:
 			//float ry = (float)rand() / (float)RAND_MAX;
 			float rx = (float)(i / 32) / (float)32;
 			float ry = (float)(i % 32) / (float)32;
-			agents[i].myClone = cAll[0];
+			agents[i].myClone = cAll[rootCloneId];
 			agents[i].contextId = i;
-			agents[i].color = cAll[0]->color;
+			agents[i].color = cAll[rootCloneId]->color;
 			agents[i].init(i);
 			context[i] = &agents[i];
 		}
@@ -545,9 +546,9 @@ public:
 	bool cloningCondition(SocialForceAgent *agent, bool *childTakenMap,
 		SocialForceClone *parentClone, SocialForceClone *childClone) {
 		double2 
-			//c1(0.25 * ENV_DIM, 0.50 * ENV_DIM),
-			c1(0.50 * ENV_DIM, 0.25 * ENV_DIM),
-			c2(0.75 * ENV_DIM, 0.75 * ENV_DIM);
+			c1(0.25 * ENV_DIM, 0.50 * ENV_DIM),
+			c2(0.50 * ENV_DIM, 0.25 * ENV_DIM),
+			c3(0.75 * ENV_DIM, 0.75 * ENV_DIM);
 
 		// if agent has been cloned?
 		if (childClone->cloneFlag[agent->contextId] == true)
@@ -558,9 +559,9 @@ public:
 		if (parentClone->pv[0] != childClone->pv[0])
 			if (length(loc - c1) < 6) return true;
 		if (parentClone->pv[1] != childClone->pv[1])
-			if (length(loc - c2) < 8) return true;
-		//if (parentClone->pv[2] != childClone->pv[2])
-		//	if (length(loc - c3) < 10) return true;
+			if (length(loc - c2) < 6) return true;
+		if (parentClone->pv[2] != childClone->pv[2])
+			if (length(loc - c3) < 6) return true;
 
 		// passive cloning condition
 		
@@ -637,9 +638,6 @@ public:
 
 	void stepApp() {
 		stepCount++;
-		//cAll[rootCloneId]->step();
-		//swapAll(cAll[rootCloneId]);
-
 		for (int j = 0; j < totalClone; j++) {
 			if (j == rootCloneId)
 				continue;
@@ -657,5 +655,6 @@ public:
 				continue;
 			compareAndEliminate(cAll[rootCloneId], cAll[j]);
 		}
+
 	}
 };
