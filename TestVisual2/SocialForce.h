@@ -257,12 +257,12 @@ public:
 		sprintf_s(filename, 20, "clone%d.txt", cloneid);
 		fout.open(filename, fstream::app);
 		fout << "========== stepCount: " << stepCount << " ==========="<<endl;
-		for (int i = 0; i < ap->numElem; i++) {
-			fout << ap->agentArray[i].contextId << " [";
-			fout << ap->agentArray[i].data.loc.x<<",";
-			fout << ap->agentArray[i].data.loc.y<<"] [";
-			fout << ap->agentArray[i].data.velocity.x<<", ";
-			fout << ap->agentArray[i].data.velocity.y<<"] ";
+		for (int i = 0; i < NUM_CAP; i++) {
+			fout << context[i]->contextId << " [";
+			fout << context[i]->data.loc.x << ",";
+			fout << context[i]->data.loc.y << "] [";
+			fout << context[i]->data.velocity.x << ", ";
+			fout << context[i]->data.velocity.y << "] ";
 			fout << endl;
 		}
 		fout.close();
@@ -524,7 +524,7 @@ void SocialForceClone::step() {
 class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
-	int paintId = 3;
+	int paintId = 7;
 	int totalClone = 8;
 	int stepCount = 0;
 	int rootCloneId = 0;
@@ -651,48 +651,57 @@ public:
 		}
 		childClone->ap->reorder();
 	}
-	void stepApp() {
+	void proc(int p, int c, bool o) {
+		performClone(cAll[p], cAll[c]);
+		cAll[c]->step();
+		if (o) {
+			if (stepCount < 800)
+				cAll[c]->output(stepCount);
+		}
+		compareAndEliminate(cAll[p], cAll[c]);
+	}
+	void stepApp0() {
+		stepCount++;
+		cAll[rootCloneId]->step();
+		if (stepCount < 800)
+			cAll[rootCloneId]->output(stepCount);
+		cAll[rootCloneId]->swap();
+	}
+	void stepApp1() {
 		stepCount++;
 
 		cAll[rootCloneId]->step();
-		//cAll[rootCloneId]->swap();
-		
+
 		performClone(cAll[0], cAll[1]);
 		cAll[1]->step();
-		//cAll[1]->swap();
 		compareAndEliminate(cAll[0], cAll[1]);
 
 		performClone(cAll[0], cAll[2]);
 		cAll[2]->step();
-		//cAll[2]->swap();
 		compareAndEliminate(cAll[0], cAll[2]);
-		// debug output
-		cAll[2]->output(stepCount);
 
 		performClone(cAll[0], cAll[4]);
 		cAll[4]->step();
-		//cAll[4]->swap();
 		compareAndEliminate(cAll[0], cAll[4]);
 
 		performClone(cAll[1], cAll[3]);
 		cAll[3]->step();
-		//cAll[3]->swap();
 		compareAndEliminate(cAll[1], cAll[3]);
 
 		performClone(cAll[1], cAll[5]);
 		cAll[5]->step();
-		//cAll[5]->swap();
 		compareAndEliminate(cAll[1], cAll[5]);
 
 		performClone(cAll[2], cAll[6]);
 		cAll[6]->step();
-		//cAll[6]->swap();
 		compareAndEliminate(cAll[2], cAll[6]);
 
 		performClone(cAll[3], cAll[7]);
 		cAll[7]->step();
-		//cAll[7]->swap();
 		compareAndEliminate(cAll[3], cAll[7]);
+		// debug output
+		if (stepCount < 800)
+			cAll[7]->output(stepCount);
 
 		for (int j = 0; j < totalClone; j++) {
 			cAll[j]->swap();
@@ -723,5 +732,17 @@ public:
 			compareAndEliminate(cAll[rootCloneId], cAll[j]);
 		}
 		*/
+	}
+	void stepApp() {
+		stepCount++;
+		cAll[rootCloneId]->step();
+
+		for (int i = 0; i < 6; i++)
+			proc(i, i + 1, 0);
+		proc(6, 7, 1);
+
+		for (int j = 0; j < totalClone; j++) {
+			cAll[j]->swap();
+		}
 	}
 };
