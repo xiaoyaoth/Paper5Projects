@@ -3,6 +3,7 @@
 #include <ctime>
 #include <Windows.h>
 #include <algorithm>
+#include <fstream>
 
 using namespace std;
 
@@ -14,7 +15,6 @@ struct double2 {
 	double2(float xx, float yy) : x(xx), y(yy) {}
 	double2(){};
 };
-
 struct Color{
 	char r, g, b;
 	Color & operator = (const Color & rhs) {
@@ -29,7 +29,6 @@ struct Color{
 		b = rand() % 255;
 	}
 };
-
 struct obstacleLine
 {
 	double sx;
@@ -103,17 +102,14 @@ struct obstacleLine
 		return 0; // No collision
 	}
 };
-
 inline float dot(const double2& a, const double2& b)
 {
 	return a.x * b.x + a.y * b.y;
 }
-
 inline float length(const double2& v)
 {
 	return sqrtf(dot(v, v));
 }
-
 inline double2 operator-(const double2& a, const double2& b)
 {
 	return double2(a.x - b.x, a.y - b.y);
@@ -214,18 +210,21 @@ public:
 
 class SocialForceClone {
 public:
-	//SocialForceAgent *agents;
 	AgentPool *ap;
-	//int numElem;
 	SocialForceAgent **context;
 	bool *cloneFlag;
 	int pv[NUM_PARAM];
-	Color color;
 	obstacleLine walls[6];
-	obstacleLine gates[3];
 	bool takenMap[NUM_CELL * NUM_CELL];
+	
+	Color color;
+	int cloneid;
+	int parentCloneid;
 
-	SocialForceClone(int pv1[NUM_PARAM]) {
+	fstream fout;
+
+	SocialForceClone(int id, int pv1[NUM_PARAM]) {
+		cloneid = id;
 		ap = new AgentPool(NUM_CAP);
 		//agents = new SocialForceAgent[NUM_CAP];
 		context = new SocialForceAgent*[NUM_CAP];
@@ -240,8 +239,34 @@ public:
 		walls[3].init(0.50 * ENV_DIM,  0.30 * ENV_DIM, 0.50 * ENV_DIM, 1.10 * ENV_DIM);
 		walls[4].init(0.75 * ENV_DIM, -0.10 * ENV_DIM, 0.75 * ENV_DIM, (0.70 - pv[2] * 0.05) * ENV_DIM);
 		walls[5].init(0.75 * ENV_DIM,  0.75 * ENV_DIM, 0.75 * ENV_DIM, 1.10 * ENV_DIM);
+
+		char filename[20];
+		sprintf_s(filename, 20, "clone%d.txt", cloneid);
+		fout.open(filename, fstream::out);
+		fout.close();
 	}
 	void step();
+	void swap() {
+		for (int i = 0; i < ap->numElem; i++) {
+			SocialForceAgent &agent = *ap->agentPtrArray[i];
+			agent.data = agent.dataCopy;
+		}
+	}
+	void output(int stepCount) {
+		char filename[20];
+		sprintf_s(filename, 20, "clone%d.txt", cloneid);
+		fout.open(filename, fstream::app);
+		fout << "========== stepCount: " << stepCount << " ==========="<<endl;
+		for (int i = 0; i < ap->numElem; i++) {
+			fout << ap->agentArray[i].contextId << " [";
+			fout << ap->agentArray[i].data.loc.x<<",";
+			fout << ap->agentArray[i].data.loc.y<<"] [";
+			fout << ap->agentArray[i].data.velocity.x<<", ";
+			fout << ap->agentArray[i].data.velocity.y<<"] ";
+			fout << endl;
+		}
+		fout.close();
+	}
 };
 double SocialForceAgent::correctCrossBoader(double val, double limit)
 {
@@ -499,10 +524,10 @@ void SocialForceClone::step() {
 class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
-	int paintId = 5;
+	int paintId = 3;
 	int totalClone = 8;
 	int stepCount = 0;
-	int rootCloneId = 1;
+	int rootCloneId = 0;
 
 	int initSimClone() {
 		srand(0);
@@ -514,12 +539,8 @@ public:
 			int pv[NUM_PARAM];
 			pv[0] = i & 1;			pv[1] = (i >> 1) & 1;
 			pv[2] = (i >> 2) & 1;
-			cAll[i] = new SocialForceClone(pv);
-
-			swprintf_s(message, 200, L"[%d, %d, %d, %d]\n", cAll[i]->pv[0],
-				cAll[i]->pv[1], cAll[i]->pv[2], cAll[i]->pv[3]);
+			cAll[i] = new SocialForceClone(i, pv);
 		}
-		OutputDebugString(message);
 
 		SocialForceAgent *agents = cAll[rootCloneId]->ap->agentArray;
 		SocialForceAgent **context = cAll[rootCloneId]->context;
@@ -542,7 +563,6 @@ public:
 
 		return EXIT_SUCCESS;
 	}
-
 	bool cloningCondition(SocialForceAgent *agent, bool *childTakenMap,
 		SocialForceClone *parentClone, SocialForceClone *childClone) {
 		double2 
@@ -578,6 +598,8 @@ public:
 		return false;
 	}
 	void performClone(SocialForceClone *parentClone, SocialForceClone *childClone) {
+		childClone->parentCloneid = parentClone->cloneid;
+
 		// 1. copy the context of parent clone
 		memcpy(childClone->context, parentClone->context, NUM_CAP * sizeof(void*));
 
@@ -610,51 +632,96 @@ public:
 			}
 		}
 	}
-
-	void swapAll(SocialForceClone *clone) {
-		for (int i = 0; i < clone->ap->numElem; i++) {
-			SocialForceAgent &agent = *clone->ap->agentPtrArray[i];
-			agent.data = agent.dataCopy;
-		}
-	}
-
 	void compareAndEliminate(SocialForceClone *parentClone, SocialForceClone *childClone) {
 		wchar_t message[20];
 		for (int i = 0; i < childClone->ap->numElem; i++) {
 			SocialForceAgent &childAgent = *childClone->ap->agentPtrArray[i];
 			SocialForceAgent &parentAgent = *childAgent.myOrigin;
-			if (length(childAgent.data.velocity - parentAgent.data.velocity) == 0 &&
-				length(childAgent.data.loc -parentAgent.data.loc) == 0) {
+			if (length(childAgent.dataCopy.velocity - parentAgent.dataCopy.velocity) == 0 &&
+				length(childAgent.dataCopy.loc - parentAgent.dataCopy.loc) == 0) {
 				childClone->ap->takenFlags[i] = false;
 				childClone->cloneFlag[childAgent.contextId] = false;
 			}
 			/*else {
-				swprintf_s(message, 20, L"not false: %d\n", i);
-				OutputDebugString(message);
+				if (childClone->cloneid == 4) {
+					swprintf_s(message, 20, L"not false: %d\n", i);
+					OutputDebugString(message);
+				}
 			}*/
 		}
 		childClone->ap->reorder();
 	}
-
 	void stepApp() {
 		stepCount++;
+
+		cAll[rootCloneId]->step();
+		//cAll[rootCloneId]->swap();
+		
+		performClone(cAll[0], cAll[1]);
+		cAll[1]->step();
+		//cAll[1]->swap();
+		compareAndEliminate(cAll[0], cAll[1]);
+
+		performClone(cAll[0], cAll[2]);
+		cAll[2]->step();
+		//cAll[2]->swap();
+		compareAndEliminate(cAll[0], cAll[2]);
+		// debug output
+		cAll[2]->output(stepCount);
+
+		performClone(cAll[0], cAll[4]);
+		cAll[4]->step();
+		//cAll[4]->swap();
+		compareAndEliminate(cAll[0], cAll[4]);
+
+		performClone(cAll[1], cAll[3]);
+		cAll[3]->step();
+		//cAll[3]->swap();
+		compareAndEliminate(cAll[1], cAll[3]);
+
+		performClone(cAll[1], cAll[5]);
+		cAll[5]->step();
+		//cAll[5]->swap();
+		compareAndEliminate(cAll[1], cAll[5]);
+
+		performClone(cAll[2], cAll[6]);
+		cAll[6]->step();
+		//cAll[6]->swap();
+		compareAndEliminate(cAll[2], cAll[6]);
+
+		performClone(cAll[3], cAll[7]);
+		cAll[7]->step();
+		//cAll[7]->swap();
+		compareAndEliminate(cAll[3], cAll[7]);
+
+		for (int j = 0; j < totalClone; j++) {
+			cAll[j]->swap();
+		}
+		
+		/*
+		// perform clone
 		for (int j = 0; j < totalClone; j++) {
 			if (j == rootCloneId)
 				continue;
-			performClone(cAll[rootCloneId], cAll[j]);	
+			performClone(cAll[rootCloneId], cAll[j]);
 		}
+
+		// step
 		for (int j = 0; j < totalClone; j++) {
 			cAll[j]->step();
 		}
+
+		// swap
 		for (int j = 0; j < totalClone; j++) {
 			swapAll(cAll[j]);
 		}
+
+		// compare and eliminate
 		for (int j = 0; j < totalClone; j++) {
-			// compare and eliminate
 			if (j == rootCloneId)
 				continue;
 			compareAndEliminate(cAll[rootCloneId], cAll[j]);
 		}
-
+		*/
 	}
 };

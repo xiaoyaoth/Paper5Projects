@@ -210,8 +210,8 @@ void CTestVisual2Dlg::myDraw()
 	SocialForceClone *c = cloneApp.cAll[paintId];
 
 	// draw title
-	WCHAR title[40];
-	swprintf_s(title, 40, L"clone: %d - numElem: %d, step: %d", cloneApp.paintId, c->ap->numElem, cloneApp.stepCount);
+	WCHAR title[100];
+	swprintf_s(title, 100, L"parent: %d, clone: %d, numElem: %d, step: %d", c->parentCloneid, c->cloneid, c->ap->numElem, cloneApp.stepCount);
 	this->SetWindowText((LPCTSTR)title);
 	
 	// draw passive clone area 
