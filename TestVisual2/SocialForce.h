@@ -125,8 +125,8 @@ inline double2 operator-(const double2& a, const double2& b)
 #define NUM_CAP 128
 #define NUM_PARAM 3
 #define ENV_DIM 64
-#define NUM_CELL 8
-#define CELL_DIM 8
+#define NUM_CELL 16
+#define CELL_DIM 4
 #define RADIUS_I 5
 
 #define NUM_WALLS 6
@@ -144,7 +144,6 @@ typedef struct {
 	SocialForceAgent *agentPtr;
 	//__device__ void putDataInSmem(GAgent *ag);
 } SocialForceAgentData;
-
 class SocialForceAgent {
 public:
 	SocialForceClone *myClone;
@@ -168,7 +167,6 @@ public:
 	void init(int idx);
 	void initNewClone(SocialForceAgent *agent, SocialForceClone *clone);
 };
-
 class AgentPool {
 public:
 	SocialForceAgent *agentArray;
@@ -240,10 +238,6 @@ public:
 		walls[4].init(0.75 * ENV_DIM, -0.10 * ENV_DIM, 0.75 * ENV_DIM, (0.70 - pv[2] * 0.05) * ENV_DIM);
 		walls[5].init(0.75 * ENV_DIM,  0.75 * ENV_DIM, 0.75 * ENV_DIM, 1.10 * ENV_DIM);
 
-		char filename[20];
-		sprintf_s(filename, 20, "clone%d.txt", cloneid);
-		fout.open(filename, fstream::out);
-		fout.close();
 	}
 	void step();
 	void swap() {
@@ -252,10 +246,13 @@ public:
 			agent.data = agent.dataCopy;
 		}
 	}
-	void output(int stepCount) {
+	void output(int stepCount, char *s) {
 		char filename[20];
-		sprintf_s(filename, 20, "clone%d.txt", cloneid);
-		fout.open(filename, fstream::app);
+		sprintf_s(filename, 20, "clone%d_%s.txt", cloneid, s);
+		if (stepCount == 1)
+			fout.open(filename, fstream::out);
+		else
+			fout.open(filename, fstream::app);
 		fout << "========== stepCount: " << stepCount << " ==========="<<endl;
 		for (int i = 0; i < NUM_CAP; i++) {
 			fout << context[i]->contextId << " [";
@@ -265,6 +262,16 @@ public:
 			fout << context[i]->data.velocity.y << "] ";
 			fout << endl;
 		}
+		fout.close();
+	}
+	void output2(int stepCount, char *s) {
+		char filename[20];
+		sprintf_s(filename, 20, "clone%d_num_%s.txt", cloneid, s);
+		if (stepCount == 1)
+			fout.open(filename, fstream::out);
+		else
+			fout.open(filename, fstream::app);
+		fout << ap->numElem<<endl;
 		fout.close();
 	}
 };
@@ -491,8 +498,9 @@ void SocialForceAgent::init(int idx) {
 	dataLocal.agentPtr = this;
 	dataLocal.loc.x = (float)rand() / (float)RAND_MAX * ENV_DIM * 0.1;
 	dataLocal.loc.y = (float)rand() / (float)RAND_MAX * ENV_DIM;
-	//dataLocal.loc.x = ENV_DIM * 0.24 - 0.1;
-	//dataLocal.loc.y = ENV_DIM * 0.50 - 0.1;
+	if (contextId == 127)
+		dataLocal.loc.y += 0.01;
+
 	dataLocal.velocity.x = 2;//4 * (this->random->uniform()-0.5);
 	dataLocal.velocity.y = 2;//4 * (this->random->uniform()-0.5);
 
@@ -524,7 +532,7 @@ void SocialForceClone::step() {
 class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
-	int paintId = 7;
+	int paintId = 2;
 	int totalClone = 8;
 	int stepCount = 0;
 	int rootCloneId = 0;
@@ -584,7 +592,6 @@ public:
 			if (length(loc - c3) < 6) return true;
 
 		// passive cloning condition
-		
 		int minx = max((loc.x - RADIUS_I) / CELL_DIM, 0);
 		int miny = max((loc.y - RADIUS_I) / CELL_DIM, 0);
 		int maxx = min((loc.x + RADIUS_I) / CELL_DIM, NUM_CELL - 1);
@@ -651,98 +658,68 @@ public:
 		}
 		childClone->ap->reorder();
 	}
-	void proc(int p, int c, bool o) {
+	void proc(int p, int c, bool o, char *s) {
 		performClone(cAll[p], cAll[c]);
 		cAll[c]->step();
 		if (o) {
 			if (stepCount < 800)
-				cAll[c]->output(stepCount);
+				cAll[c]->output(stepCount, s);
 		}
+		//cAll[c]->output2(stepCount, s);
 		compareAndEliminate(cAll[p], cAll[c]);
 	}
-	void stepApp0() {
+	void stepApp0(bool o) {
 		stepCount++;
 		cAll[rootCloneId]->step();
-		if (stepCount < 800)
-			cAll[rootCloneId]->output(stepCount);
+		if (stepCount < 800 && o)
+			cAll[rootCloneId]->output(stepCount, "s0");
 		cAll[rootCloneId]->swap();
 	}
-	void stepApp1() {
+	void stepApp1(bool o) {
 		stepCount++;
 
 		cAll[rootCloneId]->step();
-
-		performClone(cAll[0], cAll[1]);
-		cAll[1]->step();
-		compareAndEliminate(cAll[0], cAll[1]);
-
-		performClone(cAll[0], cAll[2]);
-		cAll[2]->step();
-		compareAndEliminate(cAll[0], cAll[2]);
-
-		performClone(cAll[0], cAll[4]);
-		cAll[4]->step();
-		compareAndEliminate(cAll[0], cAll[4]);
-
-		performClone(cAll[1], cAll[3]);
-		cAll[3]->step();
-		compareAndEliminate(cAll[1], cAll[3]);
-
-		performClone(cAll[1], cAll[5]);
-		cAll[5]->step();
-		compareAndEliminate(cAll[1], cAll[5]);
-
-		performClone(cAll[2], cAll[6]);
-		cAll[6]->step();
-		compareAndEliminate(cAll[2], cAll[6]);
-
-		performClone(cAll[3], cAll[7]);
-		cAll[7]->step();
-		compareAndEliminate(cAll[3], cAll[7]);
-		// debug output
-		if (stepCount < 800)
-			cAll[7]->output(stepCount);
+		proc(0, 1, 0, "s1");
+		proc(0, 2, 0, "s1");
+		proc(0, 4, 0, "s1");
+		proc(1, 3, 0, "s1");
+		proc(1, 5, 0, "s1");
+		proc(2, 6, 0, "s1");
+		proc(3, 7, o, "s1");
 
 		for (int j = 0; j < totalClone; j++) {
 			cAll[j]->swap();
 		}
-		
-		/*
-		// perform clone
-		for (int j = 0; j < totalClone; j++) {
-			if (j == rootCloneId)
-				continue;
-			performClone(cAll[rootCloneId], cAll[j]);
-		}
-
-		// step
-		for (int j = 0; j < totalClone; j++) {
-			cAll[j]->step();
-		}
-
-		// swap
-		for (int j = 0; j < totalClone; j++) {
-			swapAll(cAll[j]);
-		}
-
-		// compare and eliminate
-		for (int j = 0; j < totalClone; j++) {
-			if (j == rootCloneId)
-				continue;
-			compareAndEliminate(cAll[rootCloneId], cAll[j]);
-		}
-		*/
 	}
-	void stepApp() {
+	void stepApp2(bool o) {
 		stepCount++;
 		cAll[rootCloneId]->step();
 
 		for (int i = 0; i < 6; i++)
-			proc(i, i + 1, 0);
-		proc(6, 7, 1);
+			proc(i, i + 1, 0, "s2");
+		proc(6, 7, o, "s2");
 
 		for (int j = 0; j < totalClone; j++) {
 			cAll[j]->swap();
 		}
+	}
+	void stepApp3(bool o){
+		stepCount++;
+
+		cAll[rootCloneId]->step();
+		proc(0, 1, 0, "s3");
+		proc(0, 2, 0, "s3");
+		proc(0, 4, 0, "s3");
+		proc(0, 3, 0, "s3");
+		proc(0, 5, 0, "s3");
+		proc(0, 6, 0, "s3");
+		proc(0, 7, o, "s3");
+
+		for (int j = 0; j < totalClone; j++) {
+			cAll[j]->swap();
+		}
+	}
+	void stepApp(){
+		stepApp1(1);
 	}
 };

@@ -1,10 +1,10 @@
 
-// TestVisual2Dlg.cpp : implementation file
+// ForestFireMFCDlg.cpp : implementation file
 //
 
 #include "stdafx.h"
-#include "TestVisual2.h"
-#include "TestVisual2Dlg.h"
+#include "ForestFireMFC.h"
+#include "ForestFireMFCDlg.h"
 #include "afxdialogex.h"
 
 #include "SocialForce.h"
@@ -21,17 +21,17 @@ class CAboutDlg : public CDialogEx
 public:
 	CAboutDlg();
 
-	// Dialog Data
+// Dialog Data
 	enum { IDD = IDD_ABOUTBOX };
 
-protected:
+	protected:
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
 
-	// Implementation
+// Implementation
 protected:
 	DECLARE_MESSAGE_MAP()
 public:
-	//	afx_msg void OnLButtonDblClk(UINT nFlags, CPoint point);
+//	afx_msg void OnTimer(UINT_PTR nIDEvent);
 };
 
 CAboutDlg::CAboutDlg() : CDialogEx(CAboutDlg::IDD)
@@ -44,40 +44,37 @@ void CAboutDlg::DoDataExchange(CDataExchange* pDX)
 }
 
 BEGIN_MESSAGE_MAP(CAboutDlg, CDialogEx)
-	//	ON_WM_LBUTTONDBLCLK()
+//	ON_WM_TIMER()
 END_MESSAGE_MAP()
 
 
-// CTestVisual2Dlg dialog
+// CForestFireMFCDlg dialog
 
 
 
-CTestVisual2Dlg::CTestVisual2Dlg(CWnd* pParent /*=NULL*/)
-	: CDialogEx(CTestVisual2Dlg::IDD, pParent)
+CForestFireMFCDlg::CForestFireMFCDlg(CWnd* pParent /*=NULL*/)
+	: CDialogEx(CForestFireMFCDlg::IDD, pParent)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 }
 
-void CTestVisual2Dlg::DoDataExchange(CDataExchange* pDX)
+void CForestFireMFCDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogEx::DoDataExchange(pDX);
 }
 
-BEGIN_MESSAGE_MAP(CTestVisual2Dlg, CDialogEx)
+BEGIN_MESSAGE_MAP(CForestFireMFCDlg, CDialogEx)
 	ON_WM_SYSCOMMAND()
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
 	ON_WM_TIMER()
-	ON_WM_ERASEBKGND()
 	ON_WM_LBUTTONDBLCLK()
-	ON_WM_KEYUP()
-	ON_WM_MOUSEWHEEL()
 END_MESSAGE_MAP()
 
 
-// CTestVisual2Dlg message handlers
+// CForestFireMFCDlg message handlers
 
-BOOL CTestVisual2Dlg::OnInitDialog()
+BOOL CForestFireMFCDlg::OnInitDialog()
 {
 	CDialogEx::OnInitDialog();
 
@@ -119,7 +116,7 @@ BOOL CTestVisual2Dlg::OnInitDialog()
 	return TRUE;  // return TRUE  unless you set the focus to a control
 }
 
-void CTestVisual2Dlg::OnSysCommand(UINT nID, LPARAM lParam)
+void CForestFireMFCDlg::OnSysCommand(UINT nID, LPARAM lParam)
 {
 	if ((nID & 0xFFF0) == IDM_ABOUTBOX)
 	{
@@ -136,7 +133,7 @@ void CTestVisual2Dlg::OnSysCommand(UINT nID, LPARAM lParam)
 //  to draw the icon.  For MFC applications using the document/view model,
 //  this is automatically done for you by the framework.
 
-void CTestVisual2Dlg::OnPaint()
+void CForestFireMFCDlg::OnPaint()
 {
 	if (IsIconic())
 	{
@@ -163,35 +160,22 @@ void CTestVisual2Dlg::OnPaint()
 
 // The system calls this function to obtain the cursor to display while the user drags
 //  the minimized window.
-HCURSOR CTestVisual2Dlg::OnQueryDragIcon()
+HCURSOR CForestFireMFCDlg::OnQueryDragIcon()
 {
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
 
-void CTestVisual2Dlg::OnTimer(UINT_PTR nIDEvent)
+void CForestFireMFCDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	// TODO: Add your message handler code here and/or call default
 	cloneApp.stepApp();
 	myDraw();
 
-	if (nIDEvent == 1){
-
-	}
 	CDialogEx::OnTimer(nIDEvent);
 }
 
-
-BOOL CTestVisual2Dlg::OnEraseBkgnd(CDC* pDC)
-{
-	// TODO: Add your message handler code here and/or call default
-
-	//return CDialogEx::OnEraseBkgnd(pDC);
-	return FALSE;
-}
-
-void CTestVisual2Dlg::myDraw()
-{
+void CForestFireMFCDlg::myDraw() {
 	CClientDC dc(this);
 	_memDC.CreateCompatibleDC(NULL);
 	_memBitmap.CreateCompatibleBitmap(pDC, screenWidth, screenHeight);
@@ -210,7 +194,7 @@ void CTestVisual2Dlg::myDraw()
 	WCHAR title[100];
 	swprintf_s(title, 100, L"parent: %d, clone: %d, numElem: %d, step: %d", c->parentCloneid, c->cloneid, c->ap->numElem, cloneApp.stepCount);
 	this->SetWindowText((LPCTSTR)title);
-	
+
 	// draw passive clone area 
 	for (int i = 0; i < NUM_CELL; i++) {
 		for (int j = 0; j < NUM_CELL; j++) {
@@ -225,7 +209,7 @@ void CTestVisual2Dlg::myDraw()
 			}
 		}
 	}
-	
+
 	// draw grid
 	int numLine = NUM_CELL;
 	for (int i = 0; i < numLine; i++) {
@@ -237,7 +221,7 @@ void CTestVisual2Dlg::myDraw()
 		_memDC.MoveTo(0, i * screenHeight / NUM_CELL);
 		_memDC.LineTo(screenWidth, i * screenHeight / NUM_CELL);
 	}
-	
+
 
 	// draw wall
 	for (int i = 0; i < NUM_WALLS; i++) {
@@ -272,30 +256,10 @@ void CTestVisual2Dlg::myDraw()
 }
 
 
-void CTestVisual2Dlg::OnLButtonDblClk(UINT nFlags, CPoint point)
+void CForestFireMFCDlg::OnLButtonDblClk(UINT nFlags, CPoint point)
 {
 	// TODO: Add your message handler code here and/or call default
 	cloneApp.paintId = (cloneApp.paintId + 1) % cloneApp.totalClone;
+
 	CDialogEx::OnLButtonDblClk(nFlags, point);
-}
-
-
-void CTestVisual2Dlg::OnKeyUp(UINT nChar, UINT nRepCnt, UINT nFlags)
-{
-	// TODO: Add your message handler code here and/or call default
-	cloneApp.paintId = (nChar - 48) % cloneApp.totalClone;
-
-	CDialogEx::OnKeyUp(nChar, nRepCnt, nFlags);
-}
-
-
-BOOL CTestVisual2Dlg::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
-{
-	// TODO: Add your message handler code here and/or call default
-	fps += zDelta / 60;
-	if (fps < 10) fps = 10;
-	if (fps > 100) fps = 100;
-	SetTimer(1, 1000 / fps, NULL);
-
-	return CDialogEx::OnMouseWheel(nFlags, zDelta, pt);
 }
