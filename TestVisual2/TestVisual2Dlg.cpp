@@ -263,6 +263,14 @@ void CTestVisual2Dlg::myDraw()
 		_memDC.Ellipse(x - 3, y - 3, x + 3, y + 3);
 	}
 
+	// draw test
+	/*
+	CPoint points[] = { CPoint(20, 12), CPoint(88, 246),
+		CPoint(364, 192), CPoint(250, 48),
+		CPoint(175, 38), CPoint(388, 192), CPoint(145, 125) };
+	_memDC.PolyBezier(points, 7);
+	*/
+
 	// after draw
 	pDC->BitBlt(0, 0, screenWidth, screenHeight, &_memDC, 0, 0, SRCCOPY);
 	_memBitmap.DeleteObject();

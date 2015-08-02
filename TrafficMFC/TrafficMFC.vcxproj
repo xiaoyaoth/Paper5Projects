@@ -11,8 +11,8 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{CCC53FE5-1621-4BF1-9B6F-BA96B59250DC}</ProjectGuid>
-    <RootNamespace>ForestFireMFC</RootNamespace>
+    <ProjectGuid>{99BB4BDF-8ECD-4DBF-91D4-E9A6228E2715}</ProjectGuid>
+    <RootNamespace>TrafficMFC</RootNamespace>
     <Keyword>MFCProj</Keyword>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -101,36 +101,31 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="ForestFire.h" />
-    <ClInclude Include="ForestFireMFC.h" />
-    <ClInclude Include="ForestFireMFCDlg.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="Traffic.h" />
+    <ClInclude Include="TrafficMFC.h" />
+    <ClInclude Include="TrafficMFCDlg.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="ForestFireMFC.cpp" />
-    <ClCompile Include="ForestFireMFCDlg.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="TrafficMFC.cpp" />
+    <ClCompile Include="TrafficMFCDlg.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="ForestFireMFC.rc" />
+    <ResourceCompile Include="TrafficMFC.rc" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="res\ForestFireMFC.rc2" />
+    <None Include="res\TrafficMFC.rc2" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="res\ForestFireMFC.ico" />
+    <Image Include="res\TrafficMFC.ico" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
-  <ProjectExtensions>
-    <VisualStudio>
-      <UserProperties RESOURCE_FILE="ForestFireMFC.rc" />
-    </VisualStudio>
-  </ProjectExtensions>
 </Project>

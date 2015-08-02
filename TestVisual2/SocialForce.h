@@ -119,17 +119,17 @@ inline double2 operator-(const double2& a, const double2& b)
 #define	A 2000
 #define	B 0.1
 #define	k1 (1.2 * 100000)
-#define k2 (2.4 * 100000)
+#define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 128
+#define NUM_CAP 512
 #define NUM_PARAM 3
-#define ENV_DIM 64
+#define ENV_DIM 128
 #define NUM_CELL 16
 #define CELL_DIM 4
 #define RADIUS_I 5
 
-#define NUM_WALLS 6
+#define NUM_WALLS 30
 
 class SocialForceAgent;
 class SocialForceClone;
@@ -151,6 +151,8 @@ public:
 	SocialForceAgent *myOrigin;
 	SocialForceAgentData data;
 	SocialForceAgentData dataCopy;
+	double2 goalSeq[7];
+	int goalIdx = 0;
 
 	Color color;
 	int contextId;
@@ -212,7 +214,7 @@ public:
 	SocialForceAgent **context;
 	bool *cloneFlag;
 	int pv[NUM_PARAM];
-	obstacleLine walls[6];
+	obstacleLine walls[NUM_WALLS];
 	bool takenMap[NUM_CELL * NUM_CELL];
 	
 	Color color;
@@ -231,12 +233,40 @@ public:
 		memset(cloneFlag, 0, sizeof(bool) * NUM_CAP);
 		color = Color();
 		memcpy(pv, pv1, sizeof(int) * NUM_PARAM);
+
+		/*
+		double ps = 0.05; double dd = 0.25; int i = 0;
+		for (int ix = 0; ix < 5; ix++) {
+			for (int iy = 0; iy < 5; iy++) {
+				i = ix * 5 + iy;
+				walls[i].init(1, 1, 1, 1);
+				//walls[i].init(dd * ix * ENV_DIM, (dd * iy - 0.125 + ps) * ENV_DIM, dd * ix * ENV_DIM, (dd * iy + 0.125 - ps) * ENV_DIM);
+			}
+		}
+		//walls[i].init(dd * ix * ENV_DIM, (dd * iy - 0.125 + ps) * ENV_DIM, dd * ix * ENV_DIM, (dd * iy + 0.125 - ps) * ENV_DIM);
+		*/
+
+		double ps = 0.025; double dd = 0.25; int i = 0;
+		for (int ix = 1; ix < 4; ix++) {
+			for (int iy = 0; iy < 5; iy++) {
+				int i = (ix - 1 ) * 5 + iy;
+				walls[i].init(dd * ix * ENV_DIM, (dd * iy - 0.125 + ps) * ENV_DIM, dd * ix * ENV_DIM, (dd * iy + 0.125 - ps) * ENV_DIM);
+			}
+		}
+		for (int iy = 1; iy < 4; iy++) {
+			for (int ix = 0; ix < 5; ix++) {
+				int i = (iy - 1) * 5 + ix + 15;
+				walls[i].init((dd * ix - 0.125 + ps) * ENV_DIM, dd * iy * ENV_DIM, (dd * ix + 0.125 - ps) * ENV_DIM, dd * iy * ENV_DIM);
+			}
+		}
+		/*
 		walls[0].init(0.25 * ENV_DIM, -0.10 * ENV_DIM, 0.25 * ENV_DIM, (0.45 - pv[0] * 0.05) * ENV_DIM);
 		walls[1].init(0.25 * ENV_DIM,  0.50 * ENV_DIM, 0.25 * ENV_DIM, 1.10 * ENV_DIM);
 		walls[2].init(0.50 * ENV_DIM, -0.10 * ENV_DIM, 0.50 * ENV_DIM, (0.25 - pv[1] * 0.05) * ENV_DIM);
 		walls[3].init(0.50 * ENV_DIM,  0.30 * ENV_DIM, 0.50 * ENV_DIM, 1.10 * ENV_DIM);
 		walls[4].init(0.75 * ENV_DIM, -0.10 * ENV_DIM, 0.75 * ENV_DIM, (0.70 - pv[2] * 0.05) * ENV_DIM);
 		walls[5].init(0.75 * ENV_DIM,  0.75 * ENV_DIM, 0.75 * ENV_DIM, 1.10 * ENV_DIM);
+		*/
 
 	}
 	void step();
@@ -406,6 +436,25 @@ void SocialForceAgent::computeSocialForceRoom(SocialForceAgentData &dataLocal, d
 	dataLocal.numNeighbor = neighborCount;
 }
 void SocialForceAgent::chooseNewGoal(const double2 &newLoc, double epsilon, double2 &newGoal) {
+
+	double2 g1 = goalSeq[goalIdx];
+	double2 g2 = goalSeq[goalIdx + 1];
+
+	int x = (int)g1.x % (int)(ENV_DIM / 4);
+	int y = (int)g1.y % (int)(ENV_DIM / 4);
+
+
+	if (x > y && newLoc.y > g1.y) {
+		newGoal = g2;
+		goalIdx++;
+	}
+
+	if (x < y && newLoc.x > g1.x) {
+		newGoal = g2;
+		goalIdx++;
+	}
+
+	/*
 	if (newLoc.x < 0.25 * ENV_DIM) {
 		newGoal.x = 0.26 * ENV_DIM;
 		newGoal.y = 0.48 * ENV_DIM;
@@ -422,6 +471,7 @@ void SocialForceAgent::chooseNewGoal(const double2 &newLoc, double epsilon, doub
 		newGoal.x = 1.00 * ENV_DIM;
 		newGoal.y = 0.50 * ENV_DIM;
 	}
+	*/
 }
 void SocialForceAgent::step(){
 	double cMass = 100;
@@ -496,10 +546,8 @@ void SocialForceAgent::init(int idx) {
 
 	SocialForceAgentData & dataLocal = this->data; //= &sfModel->originalAgents->dataArray[dataSlot];
 	dataLocal.agentPtr = this;
-	dataLocal.loc.x = (float)rand() / (float)RAND_MAX * ENV_DIM * 0.1;
-	dataLocal.loc.y = (float)rand() / (float)RAND_MAX * ENV_DIM;
-	if (contextId == 127)
-		dataLocal.loc.y += 0.01;
+	dataLocal.loc.x = ENV_DIM * 0.0 + (float)rand() / (float)RAND_MAX * ENV_DIM;
+	dataLocal.loc.y = ENV_DIM * 0.0 + (float)rand() / (float)RAND_MAX * ENV_DIM;
 
 	dataLocal.velocity.x = 2;//4 * (this->random->uniform()-0.5);
 	dataLocal.velocity.y = 2;//4 * (this->random->uniform()-0.5);
@@ -507,9 +555,37 @@ void SocialForceAgent::init(int idx) {
 	dataLocal.v0 = 2;
 	dataLocal.mass = 50;
 	dataLocal.numNeighbor = 0;
-	dataLocal.goal = double2(ENV_DIM, 0.5 * ENV_DIM);
 	//chooseNewGoal(dataLocal.loc, 0, dataLocal.goal);
 
+	int ix = dataLocal.loc.x / (0.25 * ENV_DIM);
+	int iy = dataLocal.loc.y / (0.25 * ENV_DIM);
+
+	this->goalSeq[6] = double2(ENV_DIM, ENV_DIM);
+	for (int i = 0; i < 6; i++) {
+		this->goalSeq[i] = double2(ENV_DIM, ENV_DIM);
+		double r = (float)rand() / (float)RAND_MAX;
+
+		if (ix < 3) {
+			if (iy < 3 && r < 0.5) {
+				this->goalSeq[i] = double2((ix * 0.25 + 0.125) * ENV_DIM, (++iy) * 0.25 * ENV_DIM);
+			}
+			else { 
+				this->goalSeq[i] = double2((++ix) * 0.25 * ENV_DIM, (iy * 0.25 + 0.125) * ENV_DIM);
+			}
+		}
+		else if (iy < 3) {
+			this->goalSeq[i] = double2((ix * 0.25 + 0.125) * ENV_DIM, (++iy) * 0.25 * ENV_DIM);
+		}
+	}
+
+	//for (int i = 0; i < 7; i++) {
+	//	wchar_t message[20];
+	//	swprintf_s(message, 20, L"(%.1f, %.1f)", this->goalSeq[i].x, this->goalSeq[i].y);
+	//	OutputDebugString(message);
+	//}
+	OutputDebugString(L"\n");
+
+	dataLocal.goal = this->goalSeq[goalIdx];
 	this->dataCopy = dataLocal;
 }
 void SocialForceAgent::initNewClone(SocialForceAgent *parent, SocialForceClone *childClone) {
@@ -532,8 +608,8 @@ void SocialForceClone::step() {
 class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
-	int paintId = 2;
-	int totalClone = 8;
+	int paintId = 0;
+	int totalClone = 1;
 	int stepCount = 0;
 	int rootCloneId = 0;
 
@@ -685,7 +761,7 @@ public:
 		proc(1, 3, 0, "s1");
 		proc(1, 5, 0, "s1");
 		proc(2, 6, 0, "s1");
-		proc(3, 7, o, "s1");
+		proc(3, 7, 0, "s1");
 
 		for (int j = 0; j < totalClone; j++) {
 			cAll[j]->swap();
@@ -720,6 +796,9 @@ public:
 		}
 	}
 	void stepApp(){
-		stepApp1(1);
+		//stepApp1(1);
+		stepCount++;
+		cAll[rootCloneId]->step();
+		cAll[rootCloneId]->swap();
 	}
 };
