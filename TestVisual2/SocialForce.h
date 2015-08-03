@@ -36,6 +36,15 @@ struct obstacleLine
 	double ex;
 	double ey;
 
+	obstacleLine() {}
+
+	obstacleLine(double sxx, double syy, double exx, double eyy) {
+		sx = sxx;
+		sy = syy;
+		ex = exx;
+		ey = eyy;
+	}
+
 	void init(double sxx, double syy, double exx, double eyy)
 	{
 		sx = sxx;
@@ -101,6 +110,14 @@ struct obstacleLine
 		}
 		return 0; // No collision
 	}
+
+	bool operator == (const obstacleLine & other) {
+		return sx == other.sx && sy == other.sy && ex == other.ex && ey == other.ey;
+	}
+
+	bool operator != (const obstacleLine & other) {
+		return !(*this == other);
+	}
 };
 inline float dot(const double2& a, const double2& b)
 {
@@ -122,9 +139,10 @@ inline double2 operator-(const double2& a, const double2& b)
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 512
-#define NUM_PARAM 3
-#define ENV_DIM 128
+#define NUM_CAP 16
+#define NUM_PARAM 24
+#define NUM_STEP 500
+#define ENV_DIM 64
 #define NUM_CELL 16
 #define CELL_DIM 4
 #define RADIUS_I 5
@@ -213,8 +231,9 @@ public:
 	AgentPool *ap;
 	SocialForceAgent **context;
 	bool *cloneFlag;
-	int pv[NUM_PARAM];
+	int cloneParams[NUM_PARAM];
 	obstacleLine walls[NUM_WALLS];
+	obstacleLine gates[NUM_PARAM];
 	bool takenMap[NUM_CELL * NUM_CELL];
 	
 	Color color;
@@ -232,44 +251,42 @@ public:
 		memset(context, 0, sizeof(void*) * NUM_CAP);
 		memset(cloneFlag, 0, sizeof(bool) * NUM_CAP);
 		color = Color();
-		memcpy(pv, pv1, sizeof(int) * NUM_PARAM);
+		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
 
-		/*
-		double ps = 0.05; double dd = 0.25; int i = 0;
-		for (int ix = 0; ix < 5; ix++) {
-			for (int iy = 0; iy < 5; iy++) {
-				i = ix * 5 + iy;
-				walls[i].init(1, 1, 1, 1);
-				//walls[i].init(dd * ix * ENV_DIM, (dd * iy - 0.125 + ps) * ENV_DIM, dd * ix * ENV_DIM, (dd * iy + 0.125 - ps) * ENV_DIM);
-			}
+		int r1 = rand() % 5;
+		for (int i = 0; i < r1; i++) {
+			int r2 = rand() & NUM_PARAM;
+			cloneParams[r2] = rand() % NUM_STEP;
 		}
-		//walls[i].init(dd * ix * ENV_DIM, (dd * iy - 0.125 + ps) * ENV_DIM, dd * ix * ENV_DIM, (dd * iy + 0.125 - ps) * ENV_DIM);
-		*/
 
-		double ps = 0.025; double dd = 0.25; int i = 0;
+		double ps = 0.025; double dd = 0.25;
 		for (int ix = 1; ix < 4; ix++) {
 			for (int iy = 0; iy < 5; iy++) {
-				int i = (ix - 1 ) * 5 + iy;
-				walls[i].init(dd * ix * ENV_DIM, (dd * iy - 0.125 + ps) * ENV_DIM, dd * ix * ENV_DIM, (dd * iy + 0.125 - ps) * ENV_DIM);
+				int idx = (ix - 1 ) * 5 + iy;
+				walls[idx].init(dd * ix * ENV_DIM, (dd * iy - 0.125 + ps) * ENV_DIM, dd * ix * ENV_DIM, (dd * iy + 0.125 - ps) * ENV_DIM);
 			}
 		}
 		for (int iy = 1; iy < 4; iy++) {
 			for (int ix = 0; ix < 5; ix++) {
-				int i = (iy - 1) * 5 + ix + 15;
-				walls[i].init((dd * ix - 0.125 + ps) * ENV_DIM, dd * iy * ENV_DIM, (dd * ix + 0.125 - ps) * ENV_DIM, dd * iy * ENV_DIM);
+				int idx = (iy - 1) * 5 + ix + 15;
+				walls[idx].init((dd * ix - 0.125 + ps) * ENV_DIM, dd * iy * ENV_DIM, (dd * ix + 0.125 - ps) * ENV_DIM, dd * iy * ENV_DIM);
 			}
 		}
-		/*
-		walls[0].init(0.25 * ENV_DIM, -0.10 * ENV_DIM, 0.25 * ENV_DIM, (0.45 - pv[0] * 0.05) * ENV_DIM);
-		walls[1].init(0.25 * ENV_DIM,  0.50 * ENV_DIM, 0.25 * ENV_DIM, 1.10 * ENV_DIM);
-		walls[2].init(0.50 * ENV_DIM, -0.10 * ENV_DIM, 0.50 * ENV_DIM, (0.25 - pv[1] * 0.05) * ENV_DIM);
-		walls[3].init(0.50 * ENV_DIM,  0.30 * ENV_DIM, 0.50 * ENV_DIM, 1.10 * ENV_DIM);
-		walls[4].init(0.75 * ENV_DIM, -0.10 * ENV_DIM, 0.75 * ENV_DIM, (0.70 - pv[2] * 0.05) * ENV_DIM);
-		walls[5].init(0.75 * ENV_DIM,  0.75 * ENV_DIM, 0.75 * ENV_DIM, 1.10 * ENV_DIM);
-		*/
-
+		for (int ix = 1; ix < 4; ix++) {
+			for (int iy = 0; iy < 4; iy++) {
+				int idx = (ix - 1) * 4 + iy;
+				gates[idx].init(dd * ix * ENV_DIM, (dd * iy + 0.1) * ENV_DIM, dd * ix * ENV_DIM, (dd * (iy + 1) - 0.1) * ENV_DIM);
+			}
+		}
+		for (int iy = 1; iy < 4; iy++) {
+			for (int ix = 0; ix < 4; ix++) {
+				int idx = (iy - 1) * 4 + ix + 12;
+				gates[idx].init((dd * ix + 0.1) * ENV_DIM, dd * iy * ENV_DIM, (dd * (ix + 1) - 0.1) * ENV_DIM, dd * iy * ENV_DIM);
+			}
+		}
 	}
-	void step();
+	void step(int stepCount);
+	void alterGate(int stepCount);
 	void swap() {
 		for (int i = 0; i < ap->numElem; i++) {
 			SocialForceAgent &agent = *ap->agentPtrArray[i];
@@ -436,7 +453,6 @@ void SocialForceAgent::computeSocialForceRoom(SocialForceAgentData &dataLocal, d
 	dataLocal.numNeighbor = neighborCount;
 }
 void SocialForceAgent::chooseNewGoal(const double2 &newLoc, double epsilon, double2 &newGoal) {
-
 	double2 g1 = goalSeq[goalIdx];
 	double2 g2 = goalSeq[goalIdx + 1];
 
@@ -453,25 +469,6 @@ void SocialForceAgent::chooseNewGoal(const double2 &newLoc, double epsilon, doub
 		newGoal = g2;
 		goalIdx++;
 	}
-
-	/*
-	if (newLoc.x < 0.25 * ENV_DIM) {
-		newGoal.x = 0.26 * ENV_DIM;
-		newGoal.y = 0.48 * ENV_DIM;
-	}
-	else if (newLoc.x < 0.5 * ENV_DIM) {
-		newGoal.x = 0.51 * ENV_DIM;
-		newGoal.y = 0.27 * ENV_DIM;
-	}
-	else if (newLoc.x < 0.75 * ENV_DIM) {
-		newGoal.x = 0.76 * ENV_DIM;
-		newGoal.y = 0.73 * ENV_DIM;
-	}
-	else {
-		newGoal.x = 1.00 * ENV_DIM;
-		newGoal.y = 0.50 * ENV_DIM;
-	}
-	*/
 }
 void SocialForceAgent::step(){
 	double cMass = 100;
@@ -490,11 +487,16 @@ void SocialForceAgent::step(){
 	double2 fSum;
 	computeSocialForceRoom(data, fSum);
 
-	//compute force with wall
+	//compute force with walls and gates
 	for (int i = 0; i < NUM_WALLS; i++) {
 		obstacleLine wall = myClone->walls[i];
-		//alterWall(wall, i);
 		computeForceWithWall(data, wall, cMass, fSum);
+	}
+	for (int i = 0; i < NUM_PARAM; i++) {
+		obstacleLine gate = myClone->gates[i];
+		if (gate.sx == 0)
+			continue;
+		computeForceWithWall(data, gate, cMass, fSum);
 	}
 
 	//sum up
@@ -519,6 +521,12 @@ void SocialForceAgent::step(){
 	for (int i = 0; i < NUM_WALLS; i++) {
 		obstacleLine wall = myClone->walls[i];
 		computeWallImpaction(data, wall, newVelo, tick, mint);
+	}
+	for (int i = 0; i < NUM_PARAM; i++) {
+		obstacleLine gate = myClone->gates[i];
+		if (gate.sx == 0)
+			continue;
+		computeWallImpaction(data, gate, newVelo, tick, mint);
 	}
 
 	newVelo.x *= mint;
@@ -593,6 +601,9 @@ void SocialForceAgent::initNewClone(SocialForceAgent *parent, SocialForceClone *
 	this->contextId = parent->contextId;
 	this->myOrigin = parent;
 	this->myClone = childClone;
+	this->goalIdx = parent->goalIdx;
+	for (int i = 0; i < NUM_PARAM; i++)
+		this->goalSeq[i] = parent->goalSeq[i];
 
 	this->data = parent->data;
 	this->dataCopy = parent->dataCopy;
@@ -600,16 +611,24 @@ void SocialForceAgent::initNewClone(SocialForceAgent *parent, SocialForceClone *
 	this->data.agentPtr = this;
 	this->data.agentPtr = this;
 }
-void SocialForceClone::step() {
+void SocialForceClone::step(int stepCount) {
+	alterGate(stepCount);
 	for (int i = 0; i < ap->numElem; i++)
 		ap->agentPtrArray[i]->step();
+}
+
+void SocialForceClone::alterGate(int stepCount) {
+	for (int i = 0; i < NUM_PARAM; i++) {
+		if (cloneParams[i] == stepCount)
+			gates[i].init(0, 0, 0, 0);
+	}
 }
 
 class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
 	int paintId = 0;
-	int totalClone = 1;
+	int totalClone = 8;
 	int stepCount = 0;
 	int rootCloneId = 0;
 
@@ -619,11 +638,14 @@ public:
 		cAll = new SocialForceClone*[totalClone];
 		WCHAR message[200];
 		int j = 0;
+
+		int cloneParams[NUM_PARAM];
+		for (int i = 0; i < NUM_PARAM; i++) {
+			cloneParams[i] = rand() % NUM_STEP;
+		}
+
 		for (int i = 0; i < totalClone; i++) {
-			int pv[NUM_PARAM];
-			pv[0] = i & 1;			pv[1] = (i >> 1) & 1;
-			pv[2] = (i >> 2) & 1;
-			cAll[i] = new SocialForceClone(i, pv);
+			cAll[i] = new SocialForceClone(i, cloneParams);
 		}
 
 		SocialForceAgent *agents = cAll[rootCloneId]->ap->agentArray;
@@ -649,10 +671,6 @@ public:
 	}
 	bool cloningCondition(SocialForceAgent *agent, bool *childTakenMap,
 		SocialForceClone *parentClone, SocialForceClone *childClone) {
-		double2 
-			c1(0.25 * ENV_DIM, 0.50 * ENV_DIM),
-			c2(0.50 * ENV_DIM, 0.25 * ENV_DIM),
-			c3(0.75 * ENV_DIM, 0.75 * ENV_DIM);
 
 		// if agent has been cloned?
 		if (childClone->cloneFlag[agent->contextId] == true)
@@ -660,12 +678,16 @@ public:
 
 		// active cloning condition
 		double2 &loc = agent->data.loc;
-		if (parentClone->pv[0] != childClone->pv[0])
-			if (length(loc - c1) < 6) return true;
-		if (parentClone->pv[1] != childClone->pv[1])
-			if (length(loc - c2) < 6) return true;
-		if (parentClone->pv[2] != childClone->pv[2])
-			if (length(loc - c3) < 6) return true;
+		for (int i = 0; i < NUM_PARAM; i++) {
+			obstacleLine g1 = parentClone->gates[i];
+			obstacleLine g2 = childClone->gates[i];
+			obstacleLine g0 = obstacleLine(0, 0, 0, 0);
+			if (g1 != g2) {
+				obstacleLine gate = (g1 != g0) ? g1 : g2;
+				if (gate.pointToLineDist(loc) < 6)
+					return true;
+			}
+		}
 
 		// passive cloning condition
 		int minx = max((loc.x - RADIUS_I) / CELL_DIM, 0);
@@ -736,7 +758,7 @@ public:
 	}
 	void proc(int p, int c, bool o, char *s) {
 		performClone(cAll[p], cAll[c]);
-		cAll[c]->step();
+		cAll[c]->step(stepCount);
 		if (o) {
 			if (stepCount < 800)
 				cAll[c]->output(stepCount, s);
@@ -746,7 +768,7 @@ public:
 	}
 	void stepApp0(bool o) {
 		stepCount++;
-		cAll[rootCloneId]->step();
+		cAll[rootCloneId]->step(stepCount);
 		if (stepCount < 800 && o)
 			cAll[rootCloneId]->output(stepCount, "s0");
 		cAll[rootCloneId]->swap();
@@ -754,8 +776,8 @@ public:
 	void stepApp1(bool o) {
 		stepCount++;
 
-		cAll[rootCloneId]->step();
-		proc(0, 1, 0, "s1");
+		cAll[rootCloneId]->step(stepCount);
+		proc(0, 1, o, "s1");
 		proc(0, 2, 0, "s1");
 		proc(0, 4, 0, "s1");
 		proc(1, 3, 0, "s1");
@@ -769,7 +791,7 @@ public:
 	}
 	void stepApp2(bool o) {
 		stepCount++;
-		cAll[rootCloneId]->step();
+		cAll[rootCloneId]->step(stepCount);
 
 		for (int i = 0; i < 6; i++)
 			proc(i, i + 1, 0, "s2");
@@ -782,7 +804,7 @@ public:
 	void stepApp3(bool o){
 		stepCount++;
 
-		cAll[rootCloneId]->step();
+		cAll[rootCloneId]->step(stepCount);
 		proc(0, 1, 0, "s3");
 		proc(0, 2, 0, "s3");
 		proc(0, 4, 0, "s3");
@@ -796,9 +818,6 @@ public:
 		}
 	}
 	void stepApp(){
-		//stepApp1(1);
-		stepCount++;
-		cAll[rootCloneId]->step();
-		cAll[rootCloneId]->swap();
+		stepApp1(1);
 	}
 };

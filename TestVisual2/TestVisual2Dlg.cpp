@@ -251,6 +251,18 @@ void CTestVisual2Dlg::myDraw()
 		_memDC.LineTo(x, y);
 	}
 
+	// draw gate
+	for (int i = 0; i < NUM_PARAM; i++) {
+		CPen p(PS_SOLID, 5, RGB(0, 0, 0));
+		_memDC.SelectObject(p);
+		double x = c->gates[i].sx / ENV_DIM * screenWidth;
+		double y = c->gates[i].sy / ENV_DIM * screenHeight;
+		_memDC.MoveTo(x, y);
+		x = c->gates[i].ex / ENV_DIM * screenWidth;
+		y = c->gates[i].ey / ENV_DIM * screenHeight;
+		_memDC.LineTo(x, y);
+	}
+
 	// draw agent
 	for (int i = 0; i < NUM_CAP; i++) {
 		SocialForceAgent *a = c->context[i];
