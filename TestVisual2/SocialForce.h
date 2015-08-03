@@ -586,13 +586,6 @@ void SocialForceAgent::init(int idx) {
 		}
 	}
 
-	//for (int i = 0; i < 7; i++) {
-	//	wchar_t message[20];
-	//	swprintf_s(message, 20, L"(%.1f, %.1f)", this->goalSeq[i].x, this->goalSeq[i].y);
-	//	OutputDebugString(message);
-	//}
-	OutputDebugString(L"\n");
-
 	dataLocal.goal = this->goalSeq[goalIdx];
 	this->dataCopy = dataLocal;
 }
