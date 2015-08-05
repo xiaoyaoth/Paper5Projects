@@ -139,9 +139,10 @@ inline double2 operator-(const double2& a, const double2& b)
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 16
+#define NUM_CAP 128
 #define NUM_PARAM 24
 #define NUM_STEP 500
+#define NUM_GOAL 7
 #define ENV_DIM 64
 #define NUM_CELL 16
 #define CELL_DIM 4
@@ -169,7 +170,7 @@ public:
 	SocialForceAgent *myOrigin;
 	SocialForceAgentData data;
 	SocialForceAgentData dataCopy;
-	double2 goalSeq[7];
+	double2 goalSeq[NUM_GOAL];
 	int goalIdx = 0;
 
 	Color color;
@@ -253,13 +254,13 @@ public:
 		color = Color();
 		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
 
-		int r1 = rand() % 5;
+		int r1 = 1 + rand() % 4;
 		for (int i = 0; i < r1; i++) {
 			int r2 = rand() & NUM_PARAM;
 			cloneParams[r2] = rand() % NUM_STEP;
 		}
 
-		double ps = 0.025; double dd = 0.25;
+		double ps = 0.023; double dd = 0.25;
 		for (int ix = 1; ix < 4; ix++) {
 			for (int iy = 0; iy < 5; iy++) {
 				int idx = (ix - 1 ) * 5 + iy;
@@ -374,9 +375,8 @@ void SocialForceAgent::computeForceWithWall(const SocialForceAgentData &dataLoca
 	diw = wall.pointToLineDist(loc, crx, cry);
 	double virDiw = DIST(loc.x, loc.y, crx, cry);
 
-	//if (stepCount == MONITOR_STEP && this->id == 263) {
-	//	printf("dist: %f, cross: (%f, %f)\n", diw, crx, cry);
-	//}
+	if (virDiw == 0)
+		return;
 
 	double niwx = (loc.x - crx) / virDiw;
 	double niwy = (loc.y - cry) / virDiw;
@@ -460,18 +460,22 @@ void SocialForceAgent::chooseNewGoal(const double2 &newLoc, double epsilon, doub
 	int y = (int)g1.y % (int)(ENV_DIM / 4);
 
 
-	if (x > y && newLoc.y > g1.y) {
+	if (x > y && newLoc.y >= g1.y) {
 		newGoal = g2;
 		goalIdx++;
 	}
 
-	if (x < y && newLoc.x > g1.x) {
+	if (x < y && newLoc.x >= g1.x) {
 		newGoal = g2;
 		goalIdx++;
 	}
 }
 void SocialForceAgent::step(){
 	double cMass = 100;
+
+	if (this->contextId == 52 && this->myClone->cloneid == 2) {
+		printf("");
+	}
 
 	const double2& loc = data.loc;
 	const double2& goal = data.goal;
@@ -568,8 +572,8 @@ void SocialForceAgent::init(int idx) {
 	int ix = dataLocal.loc.x / (0.25 * ENV_DIM);
 	int iy = dataLocal.loc.y / (0.25 * ENV_DIM);
 
-	this->goalSeq[6] = double2(ENV_DIM, ENV_DIM);
-	for (int i = 0; i < 6; i++) {
+	this->goalSeq[NUM_GOAL - 1] = double2(ENV_DIM, ENV_DIM);
+	for (int i = 0; i < NUM_GOAL - 1; i++) {
 		this->goalSeq[i] = double2(ENV_DIM, ENV_DIM);
 		double r = (float)rand() / (float)RAND_MAX;
 
@@ -595,13 +599,12 @@ void SocialForceAgent::initNewClone(SocialForceAgent *parent, SocialForceClone *
 	this->myOrigin = parent;
 	this->myClone = childClone;
 	this->goalIdx = parent->goalIdx;
-	for (int i = 0; i < NUM_PARAM; i++)
+	for (int i = 0; i < NUM_GOAL; i++)
 		this->goalSeq[i] = parent->goalSeq[i];
 
 	this->data = parent->data;
 	this->dataCopy = parent->dataCopy;
 
-	this->data.agentPtr = this;
 	this->data.agentPtr = this;
 }
 void SocialForceClone::step(int stepCount) {
@@ -621,15 +624,16 @@ class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
 	int paintId = 0;
-	int totalClone = 8;
+	int totalClone = 32;
 	int stepCount = 0;
 	int rootCloneId = 0;
+	int **cloneTree;
 
 	int initSimClone() {
 		srand(0);
 
 		cAll = new SocialForceClone*[totalClone];
-		WCHAR message[200];
+		cloneTree = new int*[2];
 		int j = 0;
 
 		int cloneParams[NUM_PARAM];
@@ -659,6 +663,8 @@ public:
 		cAll[rootCloneId]->ap->numElem = NUM_CAP;
 		for (int j = 0; j < NUM_CAP; j++)
 			cAll[rootCloneId]->cloneFlag[j] = true;
+
+		mst();
 
 		return EXIT_SUCCESS;
 	}
@@ -759,6 +765,92 @@ public:
 		//cAll[c]->output2(stepCount, s);
 		compareAndEliminate(cAll[p], cAll[c]);
 	}
+
+	void swap(int **cloneTree, int a, int b) {
+		int t1 = cloneTree[0][a];
+		cloneTree[0][a] = cloneTree[0][b];
+		cloneTree[0][b] = t1;
+
+		t1 = cloneTree[1][a];
+		cloneTree[1][a] = cloneTree[1][b];
+		cloneTree[1][b] = t1;
+	}
+
+	void quickSort(int **cloneTree, int l, int r) {
+		if (l == r)
+			return;
+		int pi = l + rand() % (r - l);
+		swap(cloneTree, l, pi);
+		int pivot = cloneTree[0][l];
+
+		int i = l + 1, j = l + 1;
+		for (; j < r; j++) {
+			if (cloneTree[0][j] < pivot) {
+				swap(cloneTree, i, j);
+				i++;
+			}
+		}
+		swap(cloneTree, l, i - 1);
+		quickSort(cloneTree, l, i - 1);
+		quickSort(cloneTree, i, r);
+	}
+
+	void mst() {
+		// clone diff matrix
+		int **cloneDiff = new int*[totalClone];
+		for (int i = 0; i < totalClone; i++) {
+			cloneDiff[i] = new int[totalClone];
+			for (int j = 0; j < totalClone; j++)
+				cloneDiff[i][j] = 0;
+		}
+
+		for (int i = 0; i < totalClone; i++) {
+			for (int j = 0; j < totalClone; j++) {
+				for (int k = 0; k < NUM_PARAM; k++) {
+					if (cAll[i]->cloneParams[k] != cAll[j]->cloneParams[k])
+						cloneDiff[i][j]++;
+				}
+				wchar_t message[20];
+				swprintf_s(message, 20, L"%d ", cloneDiff[i][j]);
+				OutputDebugString(message);
+			}
+			OutputDebugString(L"\n");
+		}
+		int *parent = cloneTree[0] = new int[totalClone];
+		int *child = cloneTree[1] = new int[totalClone];
+		int *key = new int[totalClone];
+		bool *mstSet = new bool[totalClone];
+
+		for (int i = 0; i < totalClone; i++)
+			child[i] = i, key[i] = INT_MAX, mstSet[i] = false;
+
+		key[0] = 0;
+		parent[0] = -1;
+		child[0] = 0;
+
+		int count = 0;
+		while (count++ < totalClone - 1) {
+			int minKey = INT_MAX;
+			int minIdx;
+			for (int j = 0; j < totalClone; j++)
+				if (mstSet[j] == false && key[j] < minKey)
+					minKey = key[j], minIdx = j;
+			mstSet[minIdx] = true;
+
+			for (int j = 0; j < totalClone; j++)
+				if (cloneDiff[minIdx][j] && mstSet[j] == false && cloneDiff[minIdx][j] < key[j])
+					parent[j] = minIdx, key[j] = cloneDiff[minIdx][j];
+		}
+
+		for (int i = 0; i < totalClone; i++) {
+			wchar_t message[20];
+			swprintf_s(message, 20, L"%d - %d: %d\n", parent[i], i, cloneDiff[i][parent[i]]);
+			OutputDebugString(message);
+		}
+
+		delete mstSet;
+		delete key;
+	}
 	void stepApp0(bool o) {
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
@@ -770,7 +862,7 @@ public:
 		stepCount++;
 
 		cAll[rootCloneId]->step(stepCount);
-		proc(0, 1, o, "s1");
+		proc(0, 1, 0, "s1");
 		proc(0, 2, 0, "s1");
 		proc(0, 4, 0, "s1");
 		proc(1, 3, 0, "s1");
@@ -786,9 +878,13 @@ public:
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
 
-		for (int i = 0; i < 6; i++)
-			proc(i, i + 1, 0, "s2");
-		proc(6, 7, o, "s2");
+		proc(0, 2, 0, "s2");
+		proc(2, 1, 0, "s2");
+		proc(2, 3, 0, "s2");
+		proc(2, 4, 0, "s2");
+		proc(2, 5, 0, "s2");
+		proc(2, 6, 0, "s2");
+		proc(2, 7, o, "s2");
 
 		for (int j = 0; j < totalClone; j++) {
 			cAll[j]->swap();
@@ -810,7 +906,77 @@ public:
 			cAll[j]->swap();
 		}
 	}
+	void stepApp4_1(bool o) {
+		int **cloneDiff = new int*[totalClone];
+		for (int i = 0; i < totalClone; i++) {
+			cloneDiff[i] = new int[totalClone];
+			for (int j = 0; j < totalClone; j++)
+				cloneDiff[i][j] = 0;
+		}
+
+		for (int i = 0; i < totalClone; i++) {
+			for (int j = 0; j < totalClone; j++) {
+				for (int k = 0; k < NUM_PARAM; k++) {
+					if (cAll[i]->cloneParams[k] != cAll[j]->cloneParams[k])
+						cloneDiff[i][j]++;
+				}
+				wchar_t message[10];
+				swprintf_s(message, 10, L"%d ", cloneDiff[i][j]);
+				OutputDebugString(message);
+			}
+			OutputDebugString(L"\n");
+		}
+
+		for (int i = 0; i < totalClone; i++) {
+			int loc = 0;
+			int nDiff = 0;
+			for (int j = 0; j < NUM_PARAM; j++) {
+				wchar_t message[10];
+				swprintf_s(message, 10, L"%d ", cAll[i]->cloneParams[j]);
+				OutputDebugString(message);
+			}
+			OutputDebugString(L"\n");
+		}
+
+
+	}
+	void stepApp4(bool o) {
+		stepCount++;
+
+		cAll[rootCloneId]->step(stepCount);
+		proc(0, 1, 0, "s4");
+		proc(0, 2, 0, "s4");
+		proc(0, 3, 0, "s4");
+		proc(0, 5, 0, "s4");
+		proc(0, 7, 0, "s4");
+		proc(3, 4, 0, "s4");
+		proc(5, 6, o, "s4");
+
+		for (int j = 0; j < totalClone; j++) {
+			cAll[j]->swap();
+		}
+	}
+	void stepApp5(bool o) {
+		stepCount++;
+		cAll[rootCloneId]->step(stepCount);
+		for (int i = 1; i < totalClone; i++)
+			proc(cloneTree[0][i], i, 0, "s5");
+		for (int j = 0; j < totalClone; j++) {
+			cAll[j]->swap();
+		}
+	}
+
+	void stepApp6(bool o) {
+		stepCount++;
+		cAll[rootCloneId]->step(stepCount);
+		for (int i = 1; i < totalClone; i++)
+			proc(i - 1, i, 0, "s6");
+		for (int j = 0; j < totalClone; j++) {
+			cAll[j]->swap();
+		}
+	}
 	void stepApp(){
-		stepApp1(1);
+		//stepApp1(0);
+		stepApp5(0);
 	}
 };

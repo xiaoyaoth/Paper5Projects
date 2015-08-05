@@ -264,6 +264,9 @@ void CTestVisual2Dlg::myDraw()
 	}
 
 	// draw agent
+	/*CFont font;
+	font.CreatePointFont(80, L"Consolas", &_memDC);
+	CGdiObject *pOldFont = _memDC.SelectObject(&font);*/
 	for (int i = 0; i < NUM_CAP; i++) {
 		SocialForceAgent *a = c->context[i];
 		CPen p(PS_SOLID, 2, RGB(a->color.r, a->color.g, a->color.b));
@@ -273,7 +276,15 @@ void CTestVisual2Dlg::myDraw()
 		double x = c->context[i]->data.loc.x / ENV_DIM * screenWidth;
 		double y = c->context[i]->data.loc.y / ENV_DIM * screenHeight;
 		_memDC.Ellipse(x - 3, y - 3, x + 3, y + 3);
+		
+		//CPen p2(PS_SOLID, 1, RGB(0, 0, 0));
+		//_memDC.SelectObject(p2);
+		//CRect rect(x - 10, y - 10, x + 10, y + 10);
+		//CString str;
+		//str.Format(L"%d", a->contextId);
+		//_memDC.DrawText(str, rect, DT_CENTER);
 	}
+	//_memDC.SelectObject(pOldFont);
 
 	// draw test
 	/*
