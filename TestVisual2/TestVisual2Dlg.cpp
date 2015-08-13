@@ -9,6 +9,8 @@
 
 #include "SocialForce.h"
 
+extern "C" void runTest();
+
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif

@@ -4,17 +4,19 @@
 #include <Windows.h>
 #include <algorithm>
 #include <fstream>
+#include "inc\helper_math.h"
 
 using namespace std;
 
 #define DIST(ax, ay, bx, by) sqrt((ax-bx)*(ax-bx)+(ay-by)*(ay-by))
 
+/*
 struct double2 {
 	float x;
 	float y;
 	double2(float xx, float yy) : x(xx), y(yy) {}
 	double2(){};
-};
+};*/
 struct Color{
 	char r, g, b;
 	Color & operator = (const Color & rhs) {
@@ -129,7 +131,7 @@ inline float length(const double2& v)
 }
 inline double2 operator-(const double2& a, const double2& b)
 {
-	return double2(a.x - b.x, a.y - b.y);
+	return make_double2(a.x - b.x, a.y - b.y);
 }
 
 #define	tao 0.5
@@ -139,7 +141,7 @@ inline double2 operator-(const double2& a, const double2& b)
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 128
+#define NUM_CAP 512
 #define NUM_PARAM 24
 #define NUM_STEP 500
 #define NUM_GOAL 7
@@ -572,21 +574,21 @@ void SocialForceAgent::init(int idx) {
 	int ix = dataLocal.loc.x / (0.25 * ENV_DIM);
 	int iy = dataLocal.loc.y / (0.25 * ENV_DIM);
 
-	this->goalSeq[NUM_GOAL - 1] = double2(ENV_DIM, ENV_DIM);
+	this->goalSeq[NUM_GOAL - 1] = make_double2(ENV_DIM, ENV_DIM);
 	for (int i = 0; i < NUM_GOAL - 1; i++) {
-		this->goalSeq[i] = double2(ENV_DIM, ENV_DIM);
+		this->goalSeq[i] = make_double2(ENV_DIM, ENV_DIM);
 		double r = (float)rand() / (float)RAND_MAX;
 
 		if (ix < 3) {
 			if (iy < 3 && r < 0.5) {
-				this->goalSeq[i] = double2((ix * 0.25 + 0.125) * ENV_DIM, (++iy) * 0.25 * ENV_DIM);
+				this->goalSeq[i] = make_double2((ix * 0.25 + 0.125) * ENV_DIM, (++iy) * 0.25 * ENV_DIM);
 			}
 			else { 
-				this->goalSeq[i] = double2((++ix) * 0.25 * ENV_DIM, (iy * 0.25 + 0.125) * ENV_DIM);
+				this->goalSeq[i] = make_double2((++ix) * 0.25 * ENV_DIM, (iy * 0.25 + 0.125) * ENV_DIM);
 			}
 		}
 		else if (iy < 3) {
-			this->goalSeq[i] = double2((ix * 0.25 + 0.125) * ENV_DIM, (++iy) * 0.25 * ENV_DIM);
+			this->goalSeq[i] = make_double2((ix * 0.25 + 0.125) * ENV_DIM, (++iy) * 0.25 * ENV_DIM);
 		}
 	}
 
@@ -714,7 +716,7 @@ public:
 		}
 
 		// 3. construct passive cloning map
-		double2 dim(ENV_DIM, ENV_DIM);
+		double2 dim = make_double2(ENV_DIM, ENV_DIM);
 		memset(childClone->takenMap, 0, sizeof(bool) * NUM_CELL * NUM_CELL);
 		for (int i = 0; i < childClone->ap->numElem; i++) {
 			const SocialForceAgent &agent = *childClone->ap->agentPtrArray[i];
@@ -842,9 +844,11 @@ public:
 					parent[j] = minIdx, key[j] = cloneDiff[minIdx][j];
 		}
 
+		quickSort(cloneTree, 0, totalClone);
+
 		for (int i = 0; i < totalClone; i++) {
 			wchar_t message[20];
-			swprintf_s(message, 20, L"%d - %d: %d\n", parent[i], i, cloneDiff[i][parent[i]]);
+			swprintf_s(message, 20, L"%d - %d: %d\n", cloneTree[0][i], cloneTree[1][i], cloneDiff[i][parent[i]]);
 			OutputDebugString(message);
 		}
 
