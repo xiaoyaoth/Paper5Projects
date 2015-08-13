@@ -112,7 +112,7 @@
   <ItemGroup>
     <ClInclude Include="Resource.h" />
     <ClInclude Include="SocialForce.h" />
-    <ClInclude Include="SocialForceGPU.cuh" />
+    <CudaCompile Include="SocialForceGPU.cu" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="TestVisual2.h" />

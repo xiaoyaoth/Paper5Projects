@@ -7,7 +7,7 @@
 #include "TestVisual2Dlg.h"
 #include "afxdialogex.h"
 
-#include "SocialForce.h"
+#include "SocialForceGPU.cuh"
 
 extern "C" void runTest();
 
@@ -15,7 +15,6 @@ extern "C" void runTest();
 #define new DEBUG_NEW
 #endif
 
-SocialForceSimApp cloneApp;
 // CAboutDlg dialog used for App About
 
 class CAboutDlg : public CDialogEx

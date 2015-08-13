@@ -12,13 +12,7 @@ using namespace std;
 
 #define DIST(ax, ay, bx, by) sqrt((ax-bx)*(ax-bx)+(ay-by)*(ay-by))
 
-/*
-struct double2 {
-float x;
-float y;
-double2(float xx, float yy) : x(xx), y(yy) {}
-double2(){};
-};*/
+/* helper functions and data structures*/
 struct Color{
 	char r, g, b;
 	Color & operator = (const Color & rhs) {
@@ -135,15 +129,19 @@ inline double2 operator-(const double2& a, const double2& b)
 {
 	return make_double2(a.x - b.x, a.y - b.y);
 }
-
-template<class Type> void util::hostAllocCopyToDevice(Type *hostPtr, Type **devPtr)//device ptrInWorld must be double star
-{
-	size_t size = sizeof(Type);
-	cudaMalloc(devPtr, size);
-	cudaMemcpy(*devPtr, hostPtr, size, cudaMemcpyHostToDevice);
-	getLastCudaError("copyHostToDevice");
+namespace util {
+	template<class Type> void hostAllocCopyToDevice(Type *hostPtr, Type **devPtr)//device ptrInWorld must be double star
+	{
+		size_t size = sizeof(Type);
+		cudaMalloc(devPtr, size);
+		cudaMemcpy(*devPtr, hostPtr, size, cudaMemcpyHostToDevice);
+		getLastCudaError("copyHostToDevice");
+	}
 }
+#define BLOCK_SIZE 64
+#define GRID_SIZE(n) (n%BLOCK_SIZE==0 ? n/BLOCK_SIZE : n/BLOCK_SIZE + 1)
 
+/* application related constants */
 #define	tao 0.5
 #define	A 2000
 #define	B 0.1
@@ -199,6 +197,14 @@ public:
 	__device__ void init(int idx);
 	__device__ void initNewClone(SocialForceAgent *agent, SocialForceClone *clone);
 };
+
+namespace APUtil {
+	__global__ void hookPointerAndData(SocialForceAgent** agentPtrArray, SocialForceAgent* agentArray, int numCap) {
+		int index = threadIdx.x + blockIdx.x * blockDim.x;
+		if (index < numCap) agentPtrArray[index] = &agentArray[index];
+	}
+};
+
 class AgentPool {
 public:
 	SocialForceAgent *agentArray;
@@ -212,14 +218,8 @@ public:
 		cudaMalloc((void**)&agentPtrArray, sizeof(SocialForceAgent*) * numCap);
 		cudaMalloc((void**)&takenFlags, sizeof(bool) * numCap);
 		cudaMemset(takenFlags, 0, sizeof(bool) * numCap);
-
-		agentArray = new SocialForceAgent[numCap];
-		agentPtrArray = new SocialForceAgent*[numCap];
-		takenFlags = new bool[numCap];
-		for (int i = 0; i < numCap; i++) {
-			agentPtrArray[i] = &agentArray[i];
-			takenFlags[i] = 0;
-		}
+		int gSize = GRID_SIZE(numCap);
+		APUtil::hookPointerAndData << <gSize, BLOCK_SIZE >> >(agentPtrArray, agentArray, numCap);
 	}
 
 	__host__ void reorder() {
@@ -245,7 +245,7 @@ public:
 
 class SocialForceClone {
 public:
-	AgentPool *ap;
+	AgentPool *ap, *apHost;
 	SocialForceAgent **context;
 	bool *cloneFlag;
 	int cloneParams[NUM_PARAM];
@@ -261,12 +261,12 @@ public:
 
 	__host__ SocialForceClone(int id, int pv1[NUM_PARAM]) {
 		cloneid = id;
-		ap = new AgentPool(NUM_CAP);
-		//agents = new SocialForceAgent[NUM_CAP];
-		context = new SocialForceAgent*[NUM_CAP];
-		cloneFlag = new bool[NUM_CAP];
-		memset(context, 0, sizeof(void*) * NUM_CAP);
-		memset(cloneFlag, 0, sizeof(bool) * NUM_CAP);
+		apHost = new AgentPool(NUM_CAP);
+		util::hostAllocCopyToDevice(apHost, &ap);
+		cudaMalloc((void**)&context, sizeof(SocialForceAgent*) * NUM_CAP);
+		cudaMalloc((void**)&cloneFlag, sizeof(bool) * NUM_CAP);
+		cudaMemset(context, 0, sizeof(void*) * NUM_CAP);
+		cudaMemset(cloneFlag, 0, sizeof(bool) * NUM_CAP);
 		color = Color();
 		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
 
@@ -1005,3 +1005,5 @@ public:
 		stepApp5(0);
 	}
 };
+
+extern "C" SocialForceSimApp cloneApp;
