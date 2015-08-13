@@ -13,6 +13,26 @@ using namespace std;
 #define DIST(ax, ay, bx, by) sqrt((ax-bx)*(ax-bx)+(ay-by)*(ay-by))
 
 /* helper functions and data structures*/
+#define checkCudaErrors(err)	__checkCudaErrors(err, __FILE__, __LINE__)
+inline void __checkCudaErrors(cudaError err, const char *file, const int line)
+{
+	if (cudaSuccess != err) {
+		fprintf(stderr, "%s(%i) : CUDA Runtime API error %d: %s.\n",
+			file, line, (int)err, cudaGetErrorString(err));
+		exit(-1);
+	}
+}
+#define getLastCudaError(msg)	__getLastCudaError (msg, __FILE__, __LINE__)
+inline void __getLastCudaError(const char *errorMessage, const char *file, const int line)
+{
+	cudaError_t err = cudaGetLastError();
+	if (cudaSuccess != err) {
+		fprintf(stderr, "%s(%i) : getLastCudaError() CUDA error : %s : (%d) %s.\n",
+			file, line, errorMessage, (int)err, cudaGetErrorString(err));
+		system("PAUSE");
+		exit(-1);
+	}
+}
 struct Color{
 	char r, g, b;
 	Color & operator = (const Color & rhs) {
@@ -51,13 +71,13 @@ struct obstacleLine
 		ey = eyy;
 	}
 
-	double pointToLineDist(double2 loc)
+	__host__ __device__ double pointToLineDist(double2 loc)
 	{
 		double a, b;
 		return this->pointToLineDist(loc, a, b);
 	}
 
-	double pointToLineDist(double2 loc, double &crx, double &cry)
+	__host__ __device__ double pointToLineDist(double2 loc, double &crx, double &cry)
 	{
 		double d = DIST(sx, sy, ex, ey);
 		double t0 = ((ex - sx) * (loc.x - sx) + (ey - sy) * (loc.y - sy)) / (d * d);
@@ -85,7 +105,7 @@ struct obstacleLine
 		return d;
 	}
 
-	int intersection2LineSeg(double p0x, double p0y, double p1x, double p1y, double &ix, double &iy)
+	__host__ __device__ int intersection2LineSeg(double p0x, double p0y, double p1x, double p1y, double &ix, double &iy)
 	{
 		double s1x, s1y, s2x, s2y;
 		s1x = p1x - p0x;
@@ -117,15 +137,15 @@ struct obstacleLine
 		return !(*this == other);
 	}
 };
-inline float dot(const double2& a, const double2& b)
+__host__ __device__ inline float dot(const double2& a, const double2& b)
 {
 	return a.x * b.x + a.y * b.y;
 }
-inline float length(const double2& v)
+__host__ __device__ inline float length(const double2& v)
 {
 	return sqrtf(dot(v, v));
 }
-inline double2 operator-(const double2& a, const double2& b)
+__host__ __device__ inline double2 operator-(const double2& a, const double2& b)
 {
 	return make_double2(a.x - b.x, a.y - b.y);
 }
@@ -194,8 +214,8 @@ public:
 	__device__ void computeSocialForceRoom(SocialForceAgentData &dataLocal, double2 &fSum);
 	__device__ void chooseNewGoal(const double2 &newLoc, double epsilon, double2 &newGoal);
 	__device__ void step();
-	__device__ void init(int idx);
-	__device__ void initNewClone(SocialForceAgent *agent, SocialForceClone *clone);
+	void init(int idx);
+	void initNewClone(SocialForceAgent *agent, SocialForceClone *clone);
 };
 
 namespace APUtil {
@@ -219,7 +239,7 @@ public:
 		cudaMalloc((void**)&takenFlags, sizeof(bool) * numCap);
 		cudaMemset(takenFlags, 0, sizeof(bool) * numCap);
 		int gSize = GRID_SIZE(numCap);
-		APUtil::hookPointerAndData << <gSize, BLOCK_SIZE >> >(agentPtrArray, agentArray, numCap);
+		//APUtil::hookPointerAndData << <gSize, BLOCK_SIZE >> >(agentPtrArray, agentArray, numCap);
 	}
 
 	__host__ void reorder() {
@@ -235,8 +255,8 @@ public:
 		numElem = i;
 	}
 
-	__host__ template<class T>
-	inline void swap(T * ar, int a, int b) {
+	template<class T>
+	__host__ inline void swap(T * ar, int a, int b) {
 		T t1 = ar[a];
 		ar[a] = ar[b];
 		ar[b] = t1;
@@ -624,16 +644,17 @@ void SocialForceAgent::initNewClone(SocialForceAgent *parent, SocialForceClone *
 	this->data.agentPtr = this;
 }
 
-__global__ void step(SocialForceClone *c) {
-	int index = threadIdx.x + blockIdx.x * blockDim.x;
-	if (index < c->ap->numElem)
-		c->ap->agentPtrArray[index]->step();
+namespace clone {
+	__global__ void stepKernel(SocialForceClone *c) {
+		int index = threadIdx.x + blockIdx.x * blockDim.x;
+		if (index < c->ap->numElem)
+			c->ap->agentPtrArray[index]->step();
+	}
 }
 
 void SocialForceClone::step(int stepCount) {
 	alterGate(stepCount);
-	for (int i = 0; i < ap->numElem; i++)
-		ap->agentPtrArray[i]->step();
+	//clone::stepKernel << <GRID_SIZE(apHost->numElem), BLOCK_SIZE >> >(this);
 }
 
 void SocialForceClone::alterGate(int stepCount) {
@@ -712,10 +733,12 @@ public:
 		}
 
 		// passive cloning condition
-		int minx = max((loc.x - RADIUS_I) / CELL_DIM, 0);
-		int miny = max((loc.y - RADIUS_I) / CELL_DIM, 0);
-		int maxx = min((loc.x + RADIUS_I) / CELL_DIM, NUM_CELL - 1);
-		int maxy = min((loc.y + RADIUS_I) / CELL_DIM, NUM_CELL - 1);
+#define MY_MAX(a, b) (a > b ? a : b)
+#define MY_MIN(a, b) (a < b ? a : b)
+		int minx = MY_MAX((loc.x - RADIUS_I) / CELL_DIM, 0);
+		int miny = MY_MAX((loc.y - RADIUS_I) / CELL_DIM, 0);
+		int maxx = MY_MIN((loc.x + RADIUS_I) / CELL_DIM, NUM_CELL - 1);
+		int maxy = MY_MIN((loc.y + RADIUS_I) / CELL_DIM, NUM_CELL - 1);
 		for (int i = minx; i <= maxx; i++)
 			for (int j = miny; j <= maxy; j++)
 				if (childTakenMap[i * NUM_CELL + j])
@@ -1006,4 +1029,3 @@ public:
 	}
 };
 
-extern "C" SocialForceSimApp cloneApp;

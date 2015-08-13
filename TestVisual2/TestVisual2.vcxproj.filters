@@ -39,6 +39,12 @@
     <ClInclude Include="SocialForce.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="cuda_helper.cuh">
+      <Filter>GPU Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SocialForceGPU.cuh">
+      <Filter>GPU Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="TestVisual2.cpp">

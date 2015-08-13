@@ -7,9 +7,11 @@
 #include "TestVisual2Dlg.h"
 #include "afxdialogex.h"
 
-#include "SocialForceGPU.cuh"
+#include "SocialForceGPU.cu"
 
 extern "C" void runTest();
+
+SocialForceSimApp cloneApp;
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
