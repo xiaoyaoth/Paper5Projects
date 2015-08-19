@@ -211,7 +211,7 @@ void CTestVisual2Dlg::myDraw()
 
 	// draw title
 	WCHAR title[100];
-	swprintf_s(title, 100, L"parent: %d, clone: %d, numElem: %d, step: %d", c->parentCloneid, c->cloneid, c->ap->numElem, cloneApp.stepCount);
+	swprintf_s(title, 100, L"parent: %d, clone: %d, numElem: %d, step: %d", c->parentCloneid, c->cloneid, c->numElem, cloneApp.stepCount);
 	this->SetWindowText((LPCTSTR)title);
 	
 	// draw passive clone area 
@@ -270,14 +270,15 @@ void CTestVisual2Dlg::myDraw()
 	/*CFont font;
 	font.CreatePointFont(80, L"Consolas", &_memDC);
 	CGdiObject *pOldFont = _memDC.SelectObject(&font);*/
+	cudaMemcpy(cloneApp.agentsForDraw, c->apHost->agentArray, sizeof(SocialForceAgent) * NUM_CAP, cudaMemcpyDeviceToHost);
 	for (int i = 0; i < NUM_CAP; i++) {
-		SocialForceAgent *a = c->context[i];
-		CPen p(PS_SOLID, 2, RGB(a->color.r, a->color.g, a->color.b));
-		CBrush b(RGB(a->color.r, a->color.g, a->color.b));
+		SocialForceAgent& a = cloneApp.agentsForDraw[i];
+		CPen p(PS_SOLID, 2, RGB(a.color.x, a.color.y, a.color.z));
+		CBrush b(RGB(a.color.x, a.color.y, a.color.z));
 		_memDC.SelectObject(p);
 		_memDC.SelectObject(b);
-		double x = c->context[i]->data.loc.x / ENV_DIM * screenWidth;
-		double y = c->context[i]->data.loc.y / ENV_DIM * screenHeight;
+		double x = a.data.loc.x / ENV_DIM * screenWidth;
+		double y = a.data.loc.y / ENV_DIM * screenHeight;
 		_memDC.Ellipse(x - 3, y - 3, x + 3, y + 3);
 		
 		//CPen p2(PS_SOLID, 1, RGB(0, 0, 0));

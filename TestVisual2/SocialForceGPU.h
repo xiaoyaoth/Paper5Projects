@@ -10,25 +10,12 @@
 
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
+#include <curand_kernel.h>
 
 using namespace std;
 
 #define DIST(ax, ay, bx, by) sqrt((ax-bx)*(ax-bx)+(ay-by)*(ay-by))
 
-struct Color{
-	char r, g, b;
-	Color & operator = (const Color & rhs) {
-		r = rhs.r;
-		g = rhs.g;
-		b = rhs.b;
-		return *this;
-	}
-	Color() {
-		r = rand() % 255;
-		g = rand() % 255;
-		b = rand() % 255;
-	}
-};
 struct obstacleLine
 {
 	double sx;
@@ -197,9 +184,9 @@ public:
 	SocialForceAgentData data;
 	SocialForceAgentData dataCopy;
 	double2 goalSeq[NUM_GOAL];
-	int goalIdx = 0;
+	int goalIdx;
 
-	Color color;
+	uchar4 color;
 	int contextId;
 	//double gateSize;
 
@@ -211,7 +198,7 @@ public:
 	__device__ void computeSocialForceRoom(SocialForceAgentData &dataLocal, double2 &fSum);
 	__device__ void chooseNewGoal(const double2 &newLoc, double epsilon, double2 &newGoal);
 	__device__ void step();
-	void init(int idx);
+	__device__ void init(SocialForceClone* c, int idx);
 	void initNewClone(SocialForceAgent *agent, SocialForceClone *clone);
 };
 
@@ -225,10 +212,9 @@ public:
 	SocialForceAgent *agentArray;
 	SocialForceAgent **agentPtrArray;
 	bool *takenFlags;
-	int numElem;
+	//int numElem;
 
 	__host__ AgentPool(int numCap) {
-		numElem = 0;
 		cudaMalloc((void**)&agentArray, sizeof(SocialForceAgent) * numCap);
 		cudaMalloc((void**)&agentPtrArray, sizeof(SocialForceAgent*) * numCap);
 		cudaMalloc((void**)&takenFlags, sizeof(bool) * numCap);
@@ -239,7 +225,7 @@ public:
 		//APUtil::hookPointerAndData << <gSize, BLOCK_SIZE >> >(agentPtrArray, agentArray, numCap);
 	}
 
-	__host__ void reorder() {
+	__host__ void reorder(int numElem) {
 		int l = 0; int r = numElem;
 		int i = l, j = l;
 		for (; j < r; j++) {
@@ -262,6 +248,8 @@ public:
 
 class SocialForceClone {
 public:
+	curandState *rState;
+	int numElem;
 	AgentPool *ap, *apHost;
 	SocialForceAgent **context;
 	bool *cloneFlag;
@@ -269,8 +257,9 @@ public:
 	obstacleLine walls[NUM_WALLS];
 	obstacleLine gates[NUM_PARAM];
 	bool takenMap[NUM_CELL * NUM_CELL];
+	SocialForceClone *selfDev;
 
-	Color color;
+	uchar4 color;
 	int cloneid;
 	int parentCloneid;
 
@@ -278,13 +267,14 @@ public:
 
 	__host__ SocialForceClone(int id, int pv1[NUM_PARAM]) {
 		cloneid = id;
+		numElem = 0;
 		apHost = new AgentPool(NUM_CAP);
 		util::hostAllocCopyToDevice(apHost, &ap);
+		cudaMalloc((void**)&rState, sizeof(curandState) * NUM_CAP);
 		cudaMalloc((void**)&context, sizeof(SocialForceAgent*) * NUM_CAP);
 		cudaMalloc((void**)&cloneFlag, sizeof(bool) * NUM_CAP);
 		cudaMemset(context, 0, sizeof(void*) * NUM_CAP);
 		cudaMemset(cloneFlag, 0, sizeof(bool) * NUM_CAP);
-		color = Color();
 		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
 
 		int r1 = 1 + rand() % 4;
@@ -306,6 +296,11 @@ public:
 				walls[idx].init((dd * ix - 0.125 + ps) * ENV_DIM, dd * iy * ENV_DIM, (dd * ix + 0.125 - ps) * ENV_DIM, dd * iy * ENV_DIM);
 			}
 		}
+		
+		for (int i = 0; i < NUM_PARAM; i++)
+			gates[i].init(0, 0, 0, 0);
+
+		/*
 		for (int ix = 1; ix < 4; ix++) {
 			for (int iy = 0; iy < 4; iy++) {
 				int idx = (ix - 1) * 4 + iy;
@@ -318,15 +313,13 @@ public:
 				gates[idx].init((dd * ix + 0.1) * ENV_DIM, dd * iy * ENV_DIM, (dd * (ix + 1) - 0.1) * ENV_DIM, dd * iy * ENV_DIM);
 			}
 		}
+		*/
+
+		util::hostAllocCopyToDevice(this, &this->selfDev);
 	}
 	void step(int stepCount);
 	void alterGate(int stepCount);
-	void swap() {
-		for (int i = 0; i < ap->numElem; i++) {
-			SocialForceAgent &agent = *ap->agentPtrArray[i];
-			agent.data = agent.dataCopy;
-		}
-	}
+	void swap();
 	void output(int stepCount, char *s) {
 		char filename[20];
 		sprintf_s(filename, 20, "clone%d_%s.txt", cloneid, s);
@@ -352,7 +345,7 @@ public:
 			fout.open(filename, fstream::out);
 		else
 			fout.open(filename, fstream::app);
-		fout << ap->numElem << endl;
+		fout << numElem << endl;
 		fout.close();
 	}
 };
@@ -367,6 +360,8 @@ public:
 	int rootCloneId = 0;
 	int **cloneTree;
 
+	SocialForceAgent *agentsForDraw;
+
 	bool cloningCondition(SocialForceAgent *agent, bool *childTakenMap,
 		SocialForceClone *parentClone, SocialForceClone *childClone);
 	void performClone(SocialForceClone *parentClone, SocialForceClone *childClone);
@@ -378,6 +373,7 @@ public:
 		srand(0);
 
 		cAll = new SocialForceClone*[totalClone];
+		agentsForDraw = new SocialForceAgent[NUM_CAP];
 		cloneTree = new int*[2];
 		int j = 0;
 
@@ -390,24 +386,8 @@ public:
 			cAll[i] = new SocialForceClone(i, cloneParams);
 		}
 
-		SocialForceAgent *agentsHost = new SocialForceAgent[NUM_CAP];
-
-		for (int i = 0; i < NUM_CAP; i++) {
-			//float rx = (float)rand() / (float)RAND_MAX;
-			//float ry = (float)rand() / (float)RAND_MAX;
-			float rx = (float)(i / 32) / (float)32;
-			float ry = (float)(i % 32) / (float)32;
-			agentsHost[i].myClone = cAll[rootCloneId];
-			agentsHost[i].contextId = i;
-			agentsHost[i].color = cAll[rootCloneId]->color;
-			agentsHost[i].init(i);
-		}
-
-		hookPointerAndData(cAll[rootCloneId]->context, cAll[rootCloneId]->ap->agentArray, NUM_CAP);
-
-		cAll[rootCloneId]->ap->numElem = NUM_CAP;
-		for (int j = 0; j < NUM_CAP; j++)
-			cAll[rootCloneId]->cloneFlag[j] = true;
+		initRootClone(cAll[rootCloneId], cAll[rootCloneId]->selfDev);
+		hookPointerAndData(cAll[rootCloneId]->context, cAll[rootCloneId]->apHost->agentArray, NUM_CAP);
 
 		mst();
 
@@ -539,8 +519,9 @@ public:
 		}
 	}
 	void stepApp(){
-		//stepApp1(0);
-		stepApp5(0);
+		stepCount++;
+		cAll[rootCloneId]->step(stepCount);
+		cAll[rootCloneId]->swap();
 	}
 
 };
