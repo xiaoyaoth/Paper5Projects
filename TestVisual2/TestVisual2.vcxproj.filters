@@ -42,7 +42,7 @@
     <ClInclude Include="cuda_helper.cuh">
       <Filter>GPU Files</Filter>
     </ClInclude>
-    <ClInclude Include="SocialForceGPU.cuh">
+    <ClInclude Include="SocialForceGPU.h">
       <Filter>GPU Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -74,9 +74,6 @@
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="kernel.cu">
-      <Filter>GPU Files</Filter>
-    </CudaCompile>
-    <CudaCompile Include="SocialForceGPU.cu">
       <Filter>GPU Files</Filter>
     </CudaCompile>
   </ItemGroup>

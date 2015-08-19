@@ -1,3 +1,6 @@
+#ifndef SOCIAL_FORCE_GPU_H
+#define SOCIAL_FORCE_GPU_H
+
 #include <vector>
 #include <ctime>
 #include <Windows.h>
@@ -7,53 +10,11 @@
 
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
+
 using namespace std;
-
-/* application related constants */
-#define	tao 0.5
-#define	A 2000
-#define	B 0.1
-#define	k1 (1.2 * 100000)
-#define k2 (2.4 * 100000) 
-#define	maxv 3
-
-#define NUM_CAP 512
-#define NUM_PARAM 24
-#define NUM_STEP 500
-#define NUM_GOAL 7
-#define ENV_DIM 64
-#define NUM_CELL 16
-#define CELL_DIM 4
-#define RADIUS_I 5
-
-#define NUM_WALLS 30
-
-class SocialForceAgent;
-class SocialForceClone;
 
 #define DIST(ax, ay, bx, by) sqrt((ax-bx)*(ax-bx)+(ay-by)*(ay-by))
 
-/* helper functions and data structures*/
-#define checkCudaErrors(err)	__checkCudaErrors(err, __FILE__, __LINE__)
-inline void __checkCudaErrors(cudaError err, const char *file, const int line)
-{
-	if (cudaSuccess != err) {
-		fprintf(stderr, "%s(%i) : CUDA Runtime API error %d: %s.\n",
-			file, line, (int)err, cudaGetErrorString(err));
-		exit(-1);
-	}
-}
-#define getLastCudaError(msg)	__getLastCudaError (msg, __FILE__, __LINE__)
-inline void __getLastCudaError(const char *errorMessage, const char *file, const int line)
-{
-	cudaError_t err = cudaGetLastError();
-	if (cudaSuccess != err) {
-		fprintf(stderr, "%s(%i) : getLastCudaError() CUDA error : %s : (%d) %s.\n",
-			file, line, errorMessage, (int)err, cudaGetErrorString(err));
-		system("PAUSE");
-		exit(-1);
-	}
-}
 struct Color{
 	char r, g, b;
 	Color & operator = (const Color & rhs) {
@@ -170,6 +131,19 @@ __host__ __device__ inline double2 operator-(const double2& a, const double2& b)
 {
 	return make_double2(a.x - b.x, a.y - b.y);
 }
+
+#define getLastCudaError(msg)	__getLastCudaError (msg, __FILE__, __LINE__)
+inline void __getLastCudaError(const char *errorMessage, const char *file, const int line)
+{
+	cudaError_t err = cudaGetLastError();
+	if (cudaSuccess != err) {
+		fprintf(stderr, "%s(%i) : getLastCudaError() CUDA error : %s : (%d) %s.\n",
+			file, line, errorMessage, (int)err, cudaGetErrorString(err));
+		system("PAUSE");
+		exit(-1);
+	}
+}
+
 namespace util {
 	template<class Type> void hostAllocCopyToDevice(Type *hostPtr, Type **devPtr)//device ptrInWorld must be double star
 	{
@@ -179,8 +153,31 @@ namespace util {
 		getLastCudaError("copyHostToDevice");
 	}
 }
+
 #define BLOCK_SIZE 64
 #define GRID_SIZE(n) (n%BLOCK_SIZE==0 ? n/BLOCK_SIZE : n/BLOCK_SIZE + 1)
+
+/* application related constants */
+#define	tao 0.5
+#define	A 2000
+#define	B 0.1
+#define	k1 (1.2 * 100000)
+#define k2 (2.4 * 100000) 
+#define	maxv 3
+
+#define NUM_CAP 512
+#define NUM_PARAM 24
+#define NUM_STEP 500
+#define NUM_GOAL 7
+#define ENV_DIM 64
+#define NUM_CELL 16
+#define CELL_DIM 4
+#define RADIUS_I 5
+
+#define NUM_WALLS 30
+
+class SocialForceAgent;
+class SocialForceClone;
 
 typedef struct {
 	double2 goal;
@@ -191,6 +188,7 @@ typedef struct {
 	double2 loc;
 	SocialForceAgent *agentPtr;
 } SocialForceAgentData;
+
 class SocialForceAgent {
 public:
 	SocialForceClone *myClone;
@@ -217,12 +215,10 @@ public:
 	void initNewClone(SocialForceAgent *agent, SocialForceClone *clone);
 };
 
-namespace APUtil {
-	__global__ void hookPointerAndData(SocialForceAgent** agentPtrArray, SocialForceAgent* agentArray, int numCap) {
-		int index = threadIdx.x + blockIdx.x * blockDim.x;
-		if (index < numCap) agentPtrArray[index] = &agentArray[index];
-	}
-};
+extern "C"
+void hookPointerAndData(SocialForceAgent** agentPtrArray, SocialForceAgent* agentArray, int numCap);
+extern "C"
+void initRootClone(SocialForceClone* cHost, SocialForceClone* cDev);
 
 class AgentPool {
 public:
@@ -237,7 +233,9 @@ public:
 		cudaMalloc((void**)&agentPtrArray, sizeof(SocialForceAgent*) * numCap);
 		cudaMalloc((void**)&takenFlags, sizeof(bool) * numCap);
 		cudaMemset(takenFlags, 0, sizeof(bool) * numCap);
-		int gSize = GRID_SIZE(numCap);
+		
+		hookPointerAndData(agentPtrArray, agentArray, numCap);
+
 		//APUtil::hookPointerAndData << <gSize, BLOCK_SIZE >> >(agentPtrArray, agentArray, numCap);
 	}
 
@@ -358,3 +356,194 @@ public:
 		fout.close();
 	}
 };
+
+
+class SocialForceSimApp {
+public:
+	SocialForceClone **cAll;
+	int paintId = 0;
+	int totalClone = 1;
+	int stepCount = 0;
+	int rootCloneId = 0;
+	int **cloneTree;
+
+	bool cloningCondition(SocialForceAgent *agent, bool *childTakenMap,
+		SocialForceClone *parentClone, SocialForceClone *childClone);
+	void performClone(SocialForceClone *parentClone, SocialForceClone *childClone);
+	void compareAndEliminate(SocialForceClone *parentClone, SocialForceClone *childClone);
+	void proc(int p, int c, bool o, char *s);
+	void mst();
+
+	int initSimClone() {
+		srand(0);
+
+		cAll = new SocialForceClone*[totalClone];
+		cloneTree = new int*[2];
+		int j = 0;
+
+		int cloneParams[NUM_PARAM];
+		for (int i = 0; i < NUM_PARAM; i++) {
+			cloneParams[i] = rand() % NUM_STEP;
+		}
+
+		for (int i = 0; i < totalClone; i++) {
+			cAll[i] = new SocialForceClone(i, cloneParams);
+		}
+
+		SocialForceAgent *agentsHost = new SocialForceAgent[NUM_CAP];
+
+		for (int i = 0; i < NUM_CAP; i++) {
+			//float rx = (float)rand() / (float)RAND_MAX;
+			//float ry = (float)rand() / (float)RAND_MAX;
+			float rx = (float)(i / 32) / (float)32;
+			float ry = (float)(i % 32) / (float)32;
+			agentsHost[i].myClone = cAll[rootCloneId];
+			agentsHost[i].contextId = i;
+			agentsHost[i].color = cAll[rootCloneId]->color;
+			agentsHost[i].init(i);
+		}
+
+		hookPointerAndData(cAll[rootCloneId]->context, cAll[rootCloneId]->ap->agentArray, NUM_CAP);
+
+		cAll[rootCloneId]->ap->numElem = NUM_CAP;
+		for (int j = 0; j < NUM_CAP; j++)
+			cAll[rootCloneId]->cloneFlag[j] = true;
+
+		mst();
+
+		return EXIT_SUCCESS;
+	}
+
+	void stepApp0(bool o) {
+		stepCount++;
+		cAll[rootCloneId]->step(stepCount);
+		if (stepCount < 800 && o)
+			cAll[rootCloneId]->output(stepCount, "s0");
+		cAll[rootCloneId]->swap();
+	}
+	void stepApp1(bool o) {
+		stepCount++;
+
+		cAll[rootCloneId]->step(stepCount);
+		proc(0, 1, 0, "s1");
+		proc(0, 2, 0, "s1");
+		proc(0, 4, 0, "s1");
+		proc(1, 3, 0, "s1");
+		proc(1, 5, 0, "s1");
+		proc(2, 6, 0, "s1");
+		proc(3, 7, 0, "s1");
+
+		for (int j = 0; j < totalClone; j++) {
+			cAll[j]->swap();
+		}
+	}
+	void stepApp2(bool o) {
+		stepCount++;
+		cAll[rootCloneId]->step(stepCount);
+
+		proc(0, 2, 0, "s2");
+		proc(2, 1, 0, "s2");
+		proc(2, 3, 0, "s2");
+		proc(2, 4, 0, "s2");
+		proc(2, 5, 0, "s2");
+		proc(2, 6, 0, "s2");
+		proc(2, 7, o, "s2");
+
+		for (int j = 0; j < totalClone; j++) {
+			cAll[j]->swap();
+		}
+	}
+	void stepApp3(bool o){
+		stepCount++;
+
+		cAll[rootCloneId]->step(stepCount);
+		proc(0, 1, 0, "s3");
+		proc(0, 2, 0, "s3");
+		proc(0, 4, 0, "s3");
+		proc(0, 3, 0, "s3");
+		proc(0, 5, 0, "s3");
+		proc(0, 6, 0, "s3");
+		proc(0, 7, o, "s3");
+
+		for (int j = 0; j < totalClone; j++) {
+			cAll[j]->swap();
+		}
+	}
+	void stepApp4_1(bool o) {
+		int **cloneDiff = new int*[totalClone];
+		for (int i = 0; i < totalClone; i++) {
+			cloneDiff[i] = new int[totalClone];
+			for (int j = 0; j < totalClone; j++)
+				cloneDiff[i][j] = 0;
+		}
+
+		for (int i = 0; i < totalClone; i++) {
+			for (int j = 0; j < totalClone; j++) {
+				for (int k = 0; k < NUM_PARAM; k++) {
+					if (cAll[i]->cloneParams[k] != cAll[j]->cloneParams[k])
+						cloneDiff[i][j]++;
+				}
+				wchar_t message[10];
+				swprintf_s(message, 10, L"%d ", cloneDiff[i][j]);
+				OutputDebugString(message);
+			}
+			OutputDebugString(L"\n");
+		}
+
+		for (int i = 0; i < totalClone; i++) {
+			int loc = 0;
+			int nDiff = 0;
+			for (int j = 0; j < NUM_PARAM; j++) {
+				wchar_t message[10];
+				swprintf_s(message, 10, L"%d ", cAll[i]->cloneParams[j]);
+				OutputDebugString(message);
+			}
+			OutputDebugString(L"\n");
+		}
+
+
+	}
+	void stepApp4(bool o) {
+		stepCount++;
+
+		cAll[rootCloneId]->step(stepCount);
+		proc(0, 1, 0, "s4");
+		proc(0, 2, 0, "s4");
+		proc(0, 3, 0, "s4");
+		proc(0, 5, 0, "s4");
+		proc(0, 7, 0, "s4");
+		proc(3, 4, 0, "s4");
+		proc(5, 6, o, "s4");
+
+		for (int j = 0; j < totalClone; j++) {
+			cAll[j]->swap();
+		}
+	}
+	void stepApp5(bool o) {
+		stepCount++;
+		cAll[rootCloneId]->step(stepCount);
+		for (int i = 1; i < totalClone; i++)
+			proc(cloneTree[0][i], i, 0, "s5");
+		for (int j = 0; j < totalClone; j++) {
+			cAll[j]->swap();
+		}
+	}
+
+	void stepApp6(bool o) {
+		stepCount++;
+		cAll[rootCloneId]->step(stepCount);
+		for (int i = 1; i < totalClone; i++)
+			proc(i - 1, i, 0, "s6");
+		for (int j = 0; j < totalClone; j++) {
+			cAll[j]->swap();
+		}
+	}
+	void stepApp(){
+		//stepApp1(0);
+		stepApp5(0);
+	}
+
+};
+
+
+#endif
