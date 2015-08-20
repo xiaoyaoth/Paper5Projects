@@ -152,7 +152,7 @@ namespace util {
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 512
+#define NUM_CAP 128
 #define NUM_PARAM 24
 #define NUM_STEP 500
 #define NUM_GOAL 7
@@ -215,7 +215,7 @@ public:
 	//int numElem;
 
 	__host__ AgentPool(int numCap) {
-		cudaMalloc((void**)&agentArray, sizeof(SocialForceAgent) * numCap);
+		cudaMalloc((void**)&agentArray, sizeof(SocialForceAgent) * numCap * 2);
 		cudaMalloc((void**)&agentPtrArray, sizeof(SocialForceAgent*) * numCap);
 		cudaMalloc((void**)&takenFlags, sizeof(bool) * numCap);
 		cudaMemset(takenFlags, 0, sizeof(bool) * numCap);

@@ -22,7 +22,18 @@ inline void __checkCudaErrors(cudaError err, const char *file, const int line)
 	}
 }
 
-void hookPointerAndData(SocialForceAgent** agentPtrArray, SocialForceAgent* agentArray, int numCap);
+namespace APUtil {
+	__global__ void hookPointerAndDataKernel(SocialForceAgent** agentPtrArray, SocialForceAgent* agentArray, int numCap) {
+		int index = threadIdx.x + blockIdx.x * blockDim.x;
+		if (index < numCap) agentPtrArray[index] = &agentArray[index];
+	}
+};
+
+extern "C"
+void hookPointerAndData(SocialForceAgent** agentPtrArray, SocialForceAgent* agentArray, int numCap) {
+	int gSize = GRID_SIZE(numCap);
+	APUtil::hookPointerAndDataKernel << <gSize, BLOCK_SIZE >> >(agentPtrArray, agentArray, numCap);
+}
 
 __device__ double SocialForceAgent::correctCrossBoader(double val, double limit)
 {
@@ -249,11 +260,13 @@ __device__ void SocialForceAgent::step(){
 	dataCopy.goal = newGoal;
 }
 __device__ void SocialForceAgent::init(SocialForceClone* c, int idx) {
-	curandState_t rStateLocal = c->rState[idx];
 	//this->color = *(uchar4*)curand(&rStateLocal);
 	this->contextId = idx;
 	this->myOrigin = NULL;
 	this->goalIdx = 0;
+	this->myClone = c;
+
+	curandState_t rStateLocal = c->rState[idx];
 	
 	SocialForceAgentData & dataLocal = this->data; //= &sfModel->originalAgents->dataArray[dataSlot];
 	dataLocal.agentPtr = this;
@@ -557,16 +570,4 @@ void SocialForceSimApp::mst() {
 
 	delete mstSet;
 	delete key;
-}
-
-namespace APUtil {
-	__global__ void hookPointerAndDataKernel(SocialForceAgent** agentPtrArray, SocialForceAgent* agentArray, int numCap) {
-		int index = threadIdx.x + blockIdx.x * blockDim.x;
-		if (index < numCap) agentPtrArray[index] = &agentArray[index];
-	}
-};
-
-void hookPointerAndData(SocialForceAgent** agentPtrArray, SocialForceAgent* agentArray, int numCap) {
-	int gSize = GRID_SIZE(numCap);
-	APUtil::hookPointerAndDataKernel << <gSize, BLOCK_SIZE >> >(agentPtrArray, agentArray, numCap);
 }
