@@ -260,16 +260,18 @@ __device__ void SocialForceAgent::step(){
 	dataCopy.goal = newGoal;
 }
 __device__ void SocialForceAgent::init(SocialForceClone* c, int idx) {
-	//this->color = *(uchar4*)curand(&rStateLocal);
 	this->contextId = idx;
-	this->myOrigin = NULL;
+	//this->myOrigin = NULL;
 	this->goalIdx = 0;
 	this->myClone = c;
 
 	curandState_t rStateLocal = c->rState[idx];
+	this->color.x = curand(&rStateLocal) % 256;
+	this->color.y = curand(&rStateLocal) % 256;
+	this->color.z = curand(&rStateLocal) % 256;
+	this->color.w = curand(&rStateLocal) % 256;
 	
 	SocialForceAgentData & dataLocal = this->data; //= &sfModel->originalAgents->dataArray[dataSlot];
-	dataLocal.agentPtr = this;
 	float rx = (float)(idx / 32) / (float)32;
 	float ry = (float)(idx % 32) / (float)32;
 	dataLocal.loc.x = ENV_DIM * 0.0 + curand_uniform(&rStateLocal) * ENV_DIM;
@@ -309,36 +311,10 @@ __device__ void SocialForceAgent::init(SocialForceClone* c, int idx) {
 	this->dataCopy = dataLocal;
 }
 
-__global__ void initRandomKernel(SocialForceClone* c, int numElemLocal) {
-	int idx = threadIdx.x + blockIdx.x * blockDim.x;
-	if (idx < numElemLocal) {
-		curand_init(1234, idx, 0, &c->rState[idx]);
-	}
-}
-
-__global__ void initRootCloneKernel(SocialForceClone* c, int numElemLocal) {
-	int idx = threadIdx.x + blockIdx.x * blockDim.x;
-	if (idx < numElemLocal) {
-		c->ap->agentArray[idx].init(c, idx);
-		c->context[idx] = &c->ap->agentArray[idx];
-		c->cloneFlag[idx] = true;
-	}
-	if (idx == 0)
-		c->numElem = numElemLocal;
-}
-
-extern "C"
-void initRootClone(SocialForceClone* cHost, SocialForceClone* cDev) {
-	cHost->numElem = NUM_CAP;
-	int gSize = GRID_SIZE(NUM_CAP);
-	initRandomKernel << <gSize, BLOCK_SIZE >> >(cDev, NUM_CAP);
-	initRootCloneKernel << <gSize, BLOCK_SIZE >> >(cDev, NUM_CAP);
-}
-
 void SocialForceAgent::initNewClone(SocialForceAgent *parent, SocialForceClone *childClone) {
 	this->color = childClone->color;
 	this->contextId = parent->contextId;
-	this->myOrigin = parent;
+	//this->myOrigin = parent;
 	this->myClone = childClone;
 	this->goalIdx = parent->goalIdx;
 	for (int i = 0; i < NUM_GOAL; i++)
@@ -347,7 +323,6 @@ void SocialForceAgent::initNewClone(SocialForceAgent *parent, SocialForceClone *
 	this->data = parent->data;
 	this->dataCopy = parent->dataCopy;
 
-	this->data.agentPtr = this;
 }
 
 namespace clone {
@@ -458,7 +433,7 @@ void SocialForceSimApp::compareAndEliminate(SocialForceClone *parentClone, Socia
 	wchar_t message[20];
 	for (int i = 0; i < childClone->numElem; i++) {
 		SocialForceAgent &childAgent = *childClone->ap->agentPtrArray[i];
-		SocialForceAgent &parentAgent = *childAgent.myOrigin;
+		SocialForceAgent parentAgent; // *(SocialForceAgent*)childAgent.myOrigin;
 		if (length(childAgent.dataCopy.velocity - parentAgent.dataCopy.velocity) == 0 &&
 			length(childAgent.dataCopy.loc - parentAgent.dataCopy.loc) == 0) {
 			childClone->ap->takenFlags[i] = false;
@@ -471,7 +446,7 @@ void SocialForceSimApp::compareAndEliminate(SocialForceClone *parentClone, Socia
 		}
 		}*/
 	}
-	childClone->ap->reorder(childClone->numElem);
+	childClone->numElem = childClone->ap->reorder(childClone->numElem);
 }
 void SocialForceSimApp::proc(int p, int c, bool o, char *s) {
 	performClone(cAll[p], cAll[c]);
@@ -570,4 +545,50 @@ void SocialForceSimApp::mst() {
 
 	delete mstSet;
 	delete key;
+}
+
+__global__ void getLocAndColorKernel(SocialForceClone *c, double2 *loc, uchar4 *color, int numElem) {
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+	if (idx < numElem) {
+		loc[idx] = c->ap->agentPtrArray[idx]->data.loc;
+		color[idx] = c->ap->agentPtrArray[idx]->color;
+	}
+}
+
+void SocialForceSimApp::getLocAndColorFromDevice(){
+	SocialForceClone *c = cAll[rootCloneId];
+	int gSize = GRID_SIZE(c->numElem);
+	getLocAndColorKernel << <gSize, BLOCK_SIZE >> >(c->selfDev, debugLocDev, debugColorDev, c->numElem);
+	cudaMemcpy(debugLocHost, debugLocDev, sizeof(double2) * c->numElem, cudaMemcpyDeviceToHost);
+	cudaMemcpy(debugColorHost, debugColorDev, sizeof(uchar4) * c->numElem, cudaMemcpyDeviceToHost);
+}
+
+__global__ void initRandomKernel(SocialForceClone* c, int numElemLocal) {
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+	if (idx < numElemLocal) {
+		curand_init(1234, idx, 0, &c->rState[idx]);
+	}
+}
+
+__global__ void initRootCloneKernel(SocialForceClone* c, int numElemLocal) {
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+	if (idx < numElemLocal) {
+		c->ap->agentArray[idx].init(c, idx);
+		c->context[idx] = &c->ap->agentArray[idx];
+		c->cloneFlag[idx] = true;
+	}
+	if (idx == 0)
+		c->numElem = numElemLocal;
+}
+
+void SocialForceSimApp::initRootClone(SocialForceClone* cHost, SocialForceClone* cDev) {
+	debugLocHost = new double2[NUM_CAP];
+	debugColorHost = new uchar4[NUM_CAP];
+	cudaMalloc((void**)&debugLocDev, sizeof(double2) * NUM_CAP);
+	cudaMalloc((void**)&debugColorDev, sizeof(uchar4) * NUM_CAP);
+	cHost->numElem = NUM_CAP;
+
+	int gSize = GRID_SIZE(NUM_CAP);
+	initRandomKernel << <gSize, BLOCK_SIZE >> >(cDev, NUM_CAP);
+	initRootCloneKernel << <gSize, BLOCK_SIZE >> >(cDev, NUM_CAP);
 }

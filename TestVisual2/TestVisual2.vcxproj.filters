@@ -45,6 +45,12 @@
     <ClInclude Include="SocialForceGPU.h">
       <Filter>GPU Files</Filter>
     </ClInclude>
+    <ClInclude Include="SocialForce_1.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SocialForce_2.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="TestVisual2.cpp">

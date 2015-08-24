@@ -124,8 +124,11 @@ inline void __getLastCudaError(const char *errorMessage, const char *file, const
 {
 	cudaError_t err = cudaGetLastError();
 	if (cudaSuccess != err) {
-		fprintf(stderr, "%s(%i) : getLastCudaError() CUDA error : %s : (%d) %s.\n",
+		wchar_t message[128];
+		swprintf_s(message, 128, L"%s(%i) : getLastCudaError() CUDA error : %s : (%d) %s.\n",
 			file, line, errorMessage, (int)err, cudaGetErrorString(err));
+		//fprintf(stderr, "%s(%i) : getLastCudaError() CUDA error : %s : (%d) %s.\n",
+		//	file, line, errorMessage, (int)err, cudaGetErrorString(err));
 		system("PAUSE");
 		exit(-1);
 	}
@@ -152,7 +155,7 @@ namespace util {
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 128
+#define NUM_CAP 512
 #define NUM_PARAM 24
 #define NUM_STEP 500
 #define NUM_GOAL 7
@@ -173,22 +176,17 @@ typedef struct {
 	double mass;
 	int numNeighbor;
 	double2 loc;
-	SocialForceAgent *agentPtr;
 } SocialForceAgentData;
 
 class SocialForceAgent {
 public:
+	int goalIdx;
+	uchar4 color;
+	int contextId;
 	SocialForceClone *myClone;
-	//int id;
-	SocialForceAgent *myOrigin;
 	SocialForceAgentData data;
 	SocialForceAgentData dataCopy;
 	double2 goalSeq[NUM_GOAL];
-	int goalIdx;
-
-	uchar4 color;
-	int contextId;
-	//double gateSize;
 
 	__device__ double correctCrossBoader(double val, double limit);
 	__device__ void computeIndivSocialForceRoom(const SocialForceAgentData &myData, const SocialForceAgentData &otherData, double2 &fSum);
@@ -225,7 +223,7 @@ public:
 		//APUtil::hookPointerAndData << <gSize, BLOCK_SIZE >> >(agentPtrArray, agentArray, numCap);
 	}
 
-	__host__ void reorder(int numElem) {
+	__host__ int reorder(int numElem) {
 		int l = 0; int r = numElem;
 		int i = l, j = l;
 		for (; j < r; j++) {
@@ -235,7 +233,7 @@ public:
 				i++;
 			}
 		}
-		numElem = i;
+		return i;
 	}
 
 	template<class T>
@@ -360,7 +358,8 @@ public:
 	int rootCloneId = 0;
 	int **cloneTree;
 
-	SocialForceAgent *agentsForDraw;
+	double2 *debugLocHost, *debugLocDev;
+	uchar4 *debugColorHost, *debugColorDev;
 
 	bool cloningCondition(SocialForceAgent *agent, bool *childTakenMap,
 		SocialForceClone *parentClone, SocialForceClone *childClone);
@@ -369,11 +368,13 @@ public:
 	void proc(int p, int c, bool o, char *s);
 	void mst();
 
+	void getLocAndColorFromDevice();
+	void initRootClone(SocialForceClone *c, SocialForceClone *cDev);
+
 	int initSimClone() {
 		srand(0);
 
 		cAll = new SocialForceClone*[totalClone];
-		agentsForDraw = new SocialForceAgent[NUM_CAP];
 		cloneTree = new int*[2];
 		int j = 0;
 
@@ -522,6 +523,7 @@ public:
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
 		cAll[rootCloneId]->swap();
+		getLastCudaError("step error");
 	}
 
 };

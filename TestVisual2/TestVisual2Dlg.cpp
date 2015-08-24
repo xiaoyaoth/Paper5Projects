@@ -270,15 +270,17 @@ void CTestVisual2Dlg::myDraw()
 	/*CFont font;
 	font.CreatePointFont(80, L"Consolas", &_memDC);
 	CGdiObject *pOldFont = _memDC.SelectObject(&font);*/
-	cudaMemcpy(cloneApp.agentsForDraw, c->apHost->agentArray, sizeof(SocialForceAgent) * NUM_CAP, cudaMemcpyDeviceToHost);
+	
+	cloneApp.getLocAndColorFromDevice();
 	for (int i = 0; i < NUM_CAP; i++) {
-		SocialForceAgent& a = cloneApp.agentsForDraw[i];
-		CPen p(PS_SOLID, 2, RGB(a.color.x, a.color.y, a.color.z));
-		CBrush b(RGB(a.color.x, a.color.y, a.color.z));
+		double2 &loc = cloneApp.debugLocHost[i];
+		uchar4 &color = cloneApp.debugColorHost[i];
+		CPen p(PS_SOLID, 2, RGB(color.x, color.y, color.z));
+		CBrush b(RGB(color.x, color.y, color.z));
 		_memDC.SelectObject(p);
 		_memDC.SelectObject(b);
-		double x = a.data.loc.x / ENV_DIM * screenWidth;
-		double y = a.data.loc.y / ENV_DIM * screenHeight;
+		double x = loc.x / ENV_DIM * screenWidth;
+		double y = loc.y / ENV_DIM * screenHeight;
 		_memDC.Ellipse(x - 3, y - 3, x + 3, y + 3);
 		
 		//CPen p2(PS_SOLID, 1, RGB(0, 0, 0));
