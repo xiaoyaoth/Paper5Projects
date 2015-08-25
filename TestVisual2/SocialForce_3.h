@@ -127,16 +127,16 @@ inline double2 operator-(const double2& a, const double2& b)
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 256
-#define NUM_PARAM 4
+#define NUM_CAP 512
+#define NUM_PARAM 24
 #define NUM_STEP 500
-#define NUM_GOAL 1
+#define NUM_GOAL 7
 #define ENV_DIM 64
 #define NUM_CELL 16
 #define CELL_DIM 4
 #define RADIUS_I 5
 
-#define NUM_WALLS 3
+#define NUM_WALLS 30
 
 class SocialForceAgent;
 class SocialForceClone;
@@ -241,20 +241,43 @@ public:
 		color.x = rand() % 255; color.y = rand() % 255; color.z = rand() % 255;
 
 		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
-		cloneParams[id] *= 2;
 		//int r1 = id > 0 ? 1 + rand() % NUM_PARAM : 0;
-		int r1 = 0;
+
+		int r1 = id > 0 ? 1 + rand() % 4 : 0;
+		r1 = 0;
 		for (int i = 0; i < r1; i++) {
 			int r2 = rand() & NUM_PARAM;
+			r2 = 2;
 			cloneParams[r2] = rand() % NUM_STEP;
 		}
 				
 		double ps = 0.023; double dd = 0.25;
 
-		for (int i = 0; i < NUM_WALLS; i++)
-			walls[i].init(0.25 * (i + 1) * ENV_DIM, -10, 0.25 * (i + 1) * ENV_DIM, ENV_DIM + 10);
-		for (int i = 0; i < NUM_PARAM; i++)
-			gates[i].init(dd * i * ENV_DIM - 1, 0.5 * ENV_DIM, dd * (i + 1) * ENV_DIM + 1, 0.5 * ENV_DIM);
+		for (int ix = 1; ix < 4; ix++) {
+			for (int iy = 0; iy < 5; iy++) {
+				int idx = (ix - 1) * 5 + iy;
+				walls[idx].init(dd * ix * ENV_DIM, (dd * iy - 0.125 + ps) * ENV_DIM, dd * ix * ENV_DIM, (dd * iy + 0.125 - ps) * ENV_DIM);
+			}
+		}
+		for (int iy = 1; iy < 4; iy++) {
+			for (int ix = 0; ix < 5; ix++) {
+				int idx = (iy - 1) * 5 + ix + 15;
+				walls[idx].init((dd * ix - 0.125 + ps) * ENV_DIM, dd * iy * ENV_DIM, (dd * ix + 0.125 - ps) * ENV_DIM, dd * iy * ENV_DIM);
+			}
+		}
+
+		for (int ix = 1; ix < 4; ix++) {
+			for (int iy = 0; iy < 4; iy++) {
+				int idx = (ix - 1) * 4 + iy;
+				gates[idx].init(dd * ix * ENV_DIM, (dd * iy + 0.1) * ENV_DIM, dd * ix * ENV_DIM, (dd * (iy + 1) - 0.1) * ENV_DIM);
+			}
+		}
+		for (int iy = 1; iy < 4; iy++) {
+			for (int ix = 0; ix < 4; ix++) {
+				int idx = (iy - 1) * 4 + ix + 12;
+				gates[idx].init((dd * ix + 0.1) * ENV_DIM, dd * iy * ENV_DIM, (dd * (ix + 1) - 0.1) * ENV_DIM, dd * iy * ENV_DIM);
+			}
+		}
 	}
 	void step(int stepCount);
 	void alterGate(int stepCount);
@@ -425,6 +448,22 @@ void SocialForceAgent::computeSocialForceRoom(SocialForceAgentData &dataLocal, d
 	dataLocal.numNeighbor = neighborCount;
 }
 void SocialForceAgent::chooseNewGoal(const double2 &newLoc, double epsilon, double2 &newGoal) {
+	double2 g1 = goalSeq[goalIdx];
+	double2 g2 = goalSeq[goalIdx + 1];
+
+	int x = (int)g1.x % (int)(ENV_DIM / 4);
+	int y = (int)g1.y % (int)(ENV_DIM / 4);
+
+
+	if (x > y && newLoc.y >= g1.y) {
+		newGoal = g2;
+		goalIdx++;
+	}
+
+	if (x < y && newLoc.x >= g1.x) {
+		newGoal = g2;
+		goalIdx++;
+	}
 }
 void SocialForceAgent::step(){
 	double cMass = 100;
@@ -527,8 +566,24 @@ void SocialForceAgent::init(int idx) {
 	int ix = dataLocal.loc.x / (0.25 * ENV_DIM);
 	int iy = dataLocal.loc.y / (0.25 * ENV_DIM);
 
-	q = dataLocal.loc.x / (ENV_DIM / 4);
-	this->goalSeq[goalIdx] = make_double2(q * (ENV_DIM / 4), 64);
+	this->goalSeq[NUM_GOAL - 1] = make_double2(ENV_DIM, ENV_DIM);
+	for (int i = 0; i < NUM_GOAL - 1; i++) {
+		this->goalSeq[i] = make_double2(ENV_DIM, ENV_DIM);
+		float r = (float)rand() / RAND_MAX;
+
+		if (ix < 3) {
+			if (iy < 3 && r < 0.5) {
+				this->goalSeq[i] = make_double2((ix * 0.25 + 0.125) * ENV_DIM, (++iy) * 0.25 * ENV_DIM);
+			}
+			else {
+				this->goalSeq[i] = make_double2((++ix) * 0.25 * ENV_DIM, (iy * 0.25 + 0.125) * ENV_DIM);
+			}
+		}
+		else if (iy < 3) {
+			this->goalSeq[i] = make_double2((ix * 0.25 + 0.125) * ENV_DIM, (++iy) * 0.25 * ENV_DIM);
+		}
+	}
+
 	dataLocal.goal = this->goalSeq[goalIdx];
 	this->dataCopy = dataLocal;
 }
@@ -563,7 +618,7 @@ class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
 	int paintId = 0;
-	int totalClone = 4;
+	int totalClone = 2;
 	int stepCount = 0;
 	int rootCloneId = 0;
 	int **cloneTree;
@@ -795,111 +850,7 @@ public:
 		delete mstSet;
 		delete key;
 	}
-	void stepApp0(bool o) {
-		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
-		if (stepCount < 800 && o)
-			cAll[rootCloneId]->output(stepCount, "s0");
-		cAll[rootCloneId]->swap();
-	}
-	void stepApp1(bool o) {
-		stepCount++;
-
-		cAll[rootCloneId]->step(stepCount);
-		proc(0, 1, 0, "s1");
-		proc(0, 2, 0, "s1");
-		proc(0, 4, 0, "s1");
-		proc(1, 3, 0, "s1");
-		proc(1, 5, 0, "s1");
-		proc(2, 6, 0, "s1");
-		proc(3, 7, 0, "s1");
-
-		for (int j = 0; j < totalClone; j++) {
-			cAll[j]->swap();
-		}
-	}
-	void stepApp2(bool o) {
-		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
-
-		proc(0, 2, 0, "s2");
-		proc(2, 1, 0, "s2");
-		proc(2, 3, 0, "s2");
-		proc(2, 4, 0, "s2");
-		proc(2, 5, 0, "s2");
-		proc(2, 6, 0, "s2");
-		proc(2, 7, o, "s2");
-
-		for (int j = 0; j < totalClone; j++) {
-			cAll[j]->swap();
-		}
-	}
-	void stepApp3(bool o){
-		stepCount++;
-
-		cAll[rootCloneId]->step(stepCount);
-		proc(0, 1, 0, "s3");
-		proc(0, 2, 0, "s3");
-		proc(0, 4, 0, "s3");
-		proc(0, 3, 0, "s3");
-		proc(0, 5, 0, "s3");
-		proc(0, 6, 0, "s3");
-		proc(0, 7, o, "s3");
-
-		for (int j = 0; j < totalClone; j++) {
-			cAll[j]->swap();
-		}
-	}
-	void stepApp4_1(bool o) {
-		int **cloneDiff = new int*[totalClone];
-		for (int i = 0; i < totalClone; i++) {
-			cloneDiff[i] = new int[totalClone];
-			for (int j = 0; j < totalClone; j++)
-				cloneDiff[i][j] = 0;
-		}
-
-		for (int i = 0; i < totalClone; i++) {
-			for (int j = 0; j < totalClone; j++) {
-				for (int k = 0; k < NUM_PARAM; k++) {
-					if (cAll[i]->cloneParams[k] != cAll[j]->cloneParams[k])
-						cloneDiff[i][j]++;
-				}
-				wchar_t message[10];
-				swprintf_s(message, 10, L"%d ", cloneDiff[i][j]);
-				OutputDebugString(message);
-			}
-			OutputDebugString(L"\n");
-		}
-
-		for (int i = 0; i < totalClone; i++) {
-			int loc = 0;
-			int nDiff = 0;
-			for (int j = 0; j < NUM_PARAM; j++) {
-				wchar_t message[10];
-				swprintf_s(message, 10, L"%d ", cAll[i]->cloneParams[j]);
-				OutputDebugString(message);
-			}
-			OutputDebugString(L"\n");
-		}
-
-
-	}
-	void stepApp4(bool o) {
-		stepCount++;
-
-		cAll[rootCloneId]->step(stepCount);
-		proc(0, 1, 0, "s4");
-		proc(0, 2, 0, "s4");
-		proc(0, 3, 0, "s4");
-		proc(0, 5, 0, "s4");
-		proc(0, 7, 0, "s4");
-		proc(3, 4, 0, "s4");
-		proc(5, 6, o, "s4");
-
-		for (int j = 0; j < totalClone; j++) {
-			cAll[j]->swap();
-		}
-	}
+	
 	void stepApp5(bool o) {
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
