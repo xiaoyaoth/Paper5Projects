@@ -25,14 +25,14 @@ struct obstacleLine
 
 	obstacleLine() {}
 
-	obstacleLine(double sxx, double syy, double exx, double eyy) {
+	__host__ __device__ obstacleLine(double sxx, double syy, double exx, double eyy) {
 		sx = sxx;
 		sy = syy;
 		ex = exx;
 		ey = eyy;
 	}
 
-	void init(double sxx, double syy, double exx, double eyy)
+	__host__ __device__ void init(double sxx, double syy, double exx, double eyy)
 	{
 		sx = sxx;
 		sy = syy;
@@ -98,11 +98,11 @@ struct obstacleLine
 		return 0; // No collision
 	}
 
-	bool operator == (const obstacleLine & other) {
+	__host__ __device__ bool operator == (const obstacleLine & other) {
 		return sx == other.sx && sy == other.sy && ex == other.ex && ey == other.ey;
 	}
 
-	bool operator != (const obstacleLine & other) {
+	__host__ __device__ bool operator != (const obstacleLine & other) {
 		return !(*this == other);
 	}
 };
@@ -124,11 +124,12 @@ inline void __getLastCudaError(const char *errorMessage, const char *file, const
 {
 	cudaError_t err = cudaGetLastError();
 	if (cudaSuccess != err) {
-		wchar_t message[128];
-		swprintf_s(message, 128, L"%s(%i) : getLastCudaError() CUDA error : %s : (%d) %s.\n",
+		char message[1024];
+		sprintf_s(message, 1024, "%s(%i) : getLastCudaError() CUDA error : %s : (%d) %s.\n",
 			file, line, errorMessage, (int)err, cudaGetErrorString(err));
 		//fprintf(stderr, "%s(%i) : getLastCudaError() CUDA error : %s : (%d) %s.\n",
 		//	file, line, errorMessage, (int)err, cudaGetErrorString(err));
+		OutputDebugStringA(message);
 		system("PAUSE");
 		exit(-1);
 	}
@@ -157,7 +158,7 @@ namespace util {
 
 #define NUM_CAP 512
 #define NUM_PARAM 24
-#define NUM_STEP 500
+#define NUM_STEP 100
 #define NUM_GOAL 7
 #define ENV_DIM 64
 #define NUM_CELL 16
@@ -197,7 +198,7 @@ public:
 	__device__ void chooseNewGoal(const double2 &newLoc, double epsilon, double2 &newGoal);
 	__device__ void step();
 	__device__ void init(SocialForceClone* c, int idx);
-	void initNewClone(SocialForceAgent *agent, SocialForceClone *clone);
+	__device__ void initNewClone(SocialForceAgent *agent, SocialForceClone *clone);
 };
 
 extern "C"
@@ -246,8 +247,8 @@ public:
 
 class SocialForceClone {
 public:
+	uint numElem;
 	curandState *rState;
-	int numElem;
 	AgentPool *ap, *apHost;
 	SocialForceAgent **context;
 	bool *cloneFlag;
@@ -274,10 +275,11 @@ public:
 		cudaMemset(context, 0, sizeof(void*) * NUM_CAP);
 		cudaMemset(cloneFlag, 0, sizeof(bool) * NUM_CAP);
 		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
-
-		int r1 = 1 + rand() % 4;
+		
+		int r1 = id > 0 ? 1 + rand() % 4 : 0;
 		for (int i = 0; i < r1; i++) {
 			int r2 = rand() & NUM_PARAM;
+			r2 = 2;
 			cloneParams[r2] = rand() % NUM_STEP;
 		}
 
@@ -295,10 +297,6 @@ public:
 			}
 		}
 		
-		for (int i = 0; i < NUM_PARAM; i++)
-			gates[i].init(0, 0, 0, 0);
-
-		/*
 		for (int ix = 1; ix < 4; ix++) {
 			for (int iy = 0; iy < 4; iy++) {
 				int idx = (ix - 1) * 4 + iy;
@@ -311,7 +309,6 @@ public:
 				gates[idx].init((dd * ix + 0.1) * ENV_DIM, dd * iy * ENV_DIM, (dd * (ix + 1) - 0.1) * ENV_DIM, dd * iy * ENV_DIM);
 			}
 		}
-		*/
 
 		util::hostAllocCopyToDevice(this, &this->selfDev);
 	}
@@ -353,7 +350,7 @@ class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
 	int paintId = 0;
-	int totalClone = 1;
+	int totalClone = 2;
 	int stepCount = 0;
 	int rootCloneId = 0;
 	int **cloneTree;
@@ -361,8 +358,6 @@ public:
 	double2 *debugLocHost, *debugLocDev;
 	uchar4 *debugColorHost, *debugColorDev;
 
-	bool cloningCondition(SocialForceAgent *agent, bool *childTakenMap,
-		SocialForceClone *parentClone, SocialForceClone *childClone);
 	void performClone(SocialForceClone *parentClone, SocialForceClone *childClone);
 	void compareAndEliminate(SocialForceClone *parentClone, SocialForceClone *childClone);
 	void proc(int p, int c, bool o, char *s);
@@ -380,7 +375,7 @@ public:
 
 		int cloneParams[NUM_PARAM];
 		for (int i = 0; i < NUM_PARAM; i++) {
-			cloneParams[i] = rand() % NUM_STEP;
+			cloneParams[i] = 1;
 		}
 
 		for (int i = 0; i < totalClone; i++) {
@@ -395,111 +390,6 @@ public:
 		return EXIT_SUCCESS;
 	}
 
-	void stepApp0(bool o) {
-		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
-		if (stepCount < 800 && o)
-			cAll[rootCloneId]->output(stepCount, "s0");
-		cAll[rootCloneId]->swap();
-	}
-	void stepApp1(bool o) {
-		stepCount++;
-
-		cAll[rootCloneId]->step(stepCount);
-		proc(0, 1, 0, "s1");
-		proc(0, 2, 0, "s1");
-		proc(0, 4, 0, "s1");
-		proc(1, 3, 0, "s1");
-		proc(1, 5, 0, "s1");
-		proc(2, 6, 0, "s1");
-		proc(3, 7, 0, "s1");
-
-		for (int j = 0; j < totalClone; j++) {
-			cAll[j]->swap();
-		}
-	}
-	void stepApp2(bool o) {
-		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
-
-		proc(0, 2, 0, "s2");
-		proc(2, 1, 0, "s2");
-		proc(2, 3, 0, "s2");
-		proc(2, 4, 0, "s2");
-		proc(2, 5, 0, "s2");
-		proc(2, 6, 0, "s2");
-		proc(2, 7, o, "s2");
-
-		for (int j = 0; j < totalClone; j++) {
-			cAll[j]->swap();
-		}
-	}
-	void stepApp3(bool o){
-		stepCount++;
-
-		cAll[rootCloneId]->step(stepCount);
-		proc(0, 1, 0, "s3");
-		proc(0, 2, 0, "s3");
-		proc(0, 4, 0, "s3");
-		proc(0, 3, 0, "s3");
-		proc(0, 5, 0, "s3");
-		proc(0, 6, 0, "s3");
-		proc(0, 7, o, "s3");
-
-		for (int j = 0; j < totalClone; j++) {
-			cAll[j]->swap();
-		}
-	}
-	void stepApp4_1(bool o) {
-		int **cloneDiff = new int*[totalClone];
-		for (int i = 0; i < totalClone; i++) {
-			cloneDiff[i] = new int[totalClone];
-			for (int j = 0; j < totalClone; j++)
-				cloneDiff[i][j] = 0;
-		}
-
-		for (int i = 0; i < totalClone; i++) {
-			for (int j = 0; j < totalClone; j++) {
-				for (int k = 0; k < NUM_PARAM; k++) {
-					if (cAll[i]->cloneParams[k] != cAll[j]->cloneParams[k])
-						cloneDiff[i][j]++;
-				}
-				wchar_t message[10];
-				swprintf_s(message, 10, L"%d ", cloneDiff[i][j]);
-				OutputDebugString(message);
-			}
-			OutputDebugString(L"\n");
-		}
-
-		for (int i = 0; i < totalClone; i++) {
-			int loc = 0;
-			int nDiff = 0;
-			for (int j = 0; j < NUM_PARAM; j++) {
-				wchar_t message[10];
-				swprintf_s(message, 10, L"%d ", cAll[i]->cloneParams[j]);
-				OutputDebugString(message);
-			}
-			OutputDebugString(L"\n");
-		}
-
-
-	}
-	void stepApp4(bool o) {
-		stepCount++;
-
-		cAll[rootCloneId]->step(stepCount);
-		proc(0, 1, 0, "s4");
-		proc(0, 2, 0, "s4");
-		proc(0, 3, 0, "s4");
-		proc(0, 5, 0, "s4");
-		proc(0, 7, 0, "s4");
-		proc(3, 4, 0, "s4");
-		proc(5, 6, o, "s4");
-
-		for (int j = 0; j < totalClone; j++) {
-			cAll[j]->swap();
-		}
-	}
 	void stepApp5(bool o) {
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
@@ -522,8 +412,11 @@ public:
 	void stepApp(){
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
+		proc(0, 1, 0, "g1");
+		
 		cAll[rootCloneId]->swap();
-		getLastCudaError("step error");
+		cAll[1]->swap();
+		getLastCudaError("step");
 	}
 
 };
