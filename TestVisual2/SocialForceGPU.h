@@ -251,7 +251,7 @@ public:
 	curandState *rState;
 	AgentPool *ap, *apHost;
 	SocialForceAgent **context;
-	bool *cloneFlag;
+	bool *cloneFlags;
 	int cloneParams[NUM_PARAM];
 	obstacleLine walls[NUM_WALLS];
 	obstacleLine gates[NUM_PARAM];
@@ -271,9 +271,9 @@ public:
 		util::hostAllocCopyToDevice(apHost, &ap);
 		cudaMalloc((void**)&rState, sizeof(curandState) * NUM_CAP);
 		cudaMalloc((void**)&context, sizeof(SocialForceAgent*) * NUM_CAP);
-		cudaMalloc((void**)&cloneFlag, sizeof(bool) * NUM_CAP);
+		cudaMalloc((void**)&cloneFlags, sizeof(bool) * NUM_CAP);
 		cudaMemset(context, 0, sizeof(void*) * NUM_CAP);
-		cudaMemset(cloneFlag, 0, sizeof(bool) * NUM_CAP);
+		cudaMemset(cloneFlags, 0, sizeof(bool) * NUM_CAP);
 		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
 		
 		int r1 = id > 0 ? 1 + rand() % 4 : 0;
@@ -349,7 +349,7 @@ public:
 class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
-	int paintId = 0;
+	int paintId = 1;
 	int totalClone = 2;
 	int stepCount = 0;
 	int rootCloneId = 0;
@@ -368,6 +368,11 @@ public:
 
 	int initSimClone() {
 		srand(0);
+
+		debugLocHost = new double2[NUM_CAP];
+		debugColorHost = new uchar4[NUM_CAP];
+		cudaMalloc((void**)&debugLocDev, sizeof(double2) * NUM_CAP);
+		cudaMalloc((void**)&debugColorDev, sizeof(uchar4) * NUM_CAP);
 
 		cAll = new SocialForceClone*[totalClone];
 		cloneTree = new int*[2];

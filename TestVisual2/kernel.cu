@@ -374,16 +374,18 @@ namespace AppUtil {
 		SocialForceClone *parentClone, SocialForceClone *childClone) {
 
 		// if agent has been cloned?
-		if (childClone->cloneFlag[agent->contextId] == true)
+		if (childClone->cloneFlags[agent->contextId] == true)
 			return false;
 
 		// active cloning condition
 		double2 &loc = agent->data.loc;
 		for (int i = 0; i < NUM_PARAM; i++) {
-			obstacleLine g1 = parentClone->gates[i];
-			obstacleLine g2 = childClone->gates[i];
-			obstacleLine g0 = obstacleLine(0, 0, 0, 0);
-			if (g1 != g2) {
+			int param1 = parentClone->cloneParams[i];
+			int param2 = childClone->cloneParams[i];
+			if (param1 != param2) {
+				obstacleLine g1 = parentClone->gates[i];
+				obstacleLine g2 = childClone->gates[i];
+				obstacleLine g0 = obstacleLine(0, 0, 0, 0);
 				obstacleLine gate = (g1 != g0) ? g1 : g2;
 				if (gate.pointToLineDist(loc) < 6)
 					return true;
@@ -433,12 +435,47 @@ namespace AppUtil {
 				SocialForceAgent& childAgent = *c->ap->agentPtrArray[lastNum];
 				childAgent.initNewClone(agent, c);
 				c->context[childAgent.contextId] = &childAgent;
-				c->cloneFlag[childAgent.contextId] = true;
+				c->cloneFlags[childAgent.contextId] = true;
 				//c->numElem++; /* not written back */
 			}
 		}
 		if (idx == 0)
 			printf("%d\n", c->numElem);
+	}
+	__global__ void compareAndEliminateKernel(SocialForceClone *p, SocialForceClone *c, int numElem) {
+		int idx = threadIdx.x + blockIdx.x * blockDim.x;
+		if (idx < numElem) {
+			SocialForceAgent &childAgent = *c->ap->agentPtrArray[idx];
+			SocialForceAgent &parentAgent = *p->context[childAgent.contextId]; // *(SocialForceAgent*)childAgent.myOrigin;
+			if (length(childAgent.dataCopy.velocity - parentAgent.dataCopy.velocity) == 0 &&
+				length(childAgent.dataCopy.loc - parentAgent.dataCopy.loc) == 0) {
+				c->ap->takenFlags[idx] = false;
+				c->cloneFlags[childAgent.contextId] = false;
+			}
+		}
+	}
+
+	template<class T>
+	__device__  void swap(T * ar, int a, int b) {
+		T t1 = ar[a];
+		ar[a] = ar[b];
+		ar[b] = t1;
+	}
+
+	__global__ void reorderKernel(SocialForceClone *c, int numElem) {
+		int idx = threadIdx.x + blockIdx.x * blockDim.x;
+		if (idx == 0) {
+			int l = 0; int r = numElem;
+			int i = l, j = l;
+			for (; j < r; j++) {
+				if (c->ap->takenFlags[j] == true) {
+					swap<SocialForceAgent*>(c->ap->agentPtrArray, i, j);
+					swap<bool>(c->ap->takenFlags, i, j);
+					i++;
+				}
+			}
+			c->numElem = i;
+		}
 	}
 };
 
@@ -476,7 +513,7 @@ void SocialForceSimApp::performClone(SocialForceClone *parentClone, SocialForceC
 			childClone->ap->takenFlags[childClone->numElem] = true;
 			childAgent.initNewClone(agent, childClone);
 			childClone->context[childAgent.contextId] = &childAgent;
-			childClone->cloneFlag[childAgent.contextId] = true;
+			childClone->cloneFlags[childAgent.contextId] = true;
 			childClone->numElem++;
 		}
 	}*/
@@ -491,7 +528,7 @@ void SocialForceSimApp::compareAndEliminate(SocialForceClone *parentClone, Socia
 		if (length(childAgent.dataCopy.velocity - parentAgent.dataCopy.velocity) == 0 &&
 			length(childAgent.dataCopy.loc - parentAgent.dataCopy.loc) == 0) {
 			childClone->ap->takenFlags[i] = false;
-			childClone->cloneFlag[childAgent.contextId] = false;
+			childClone->cloneFlags[childAgent.contextId] = false;
 		}
 		/*else {
 		if (childClone->cloneid == 4) {
@@ -604,19 +641,17 @@ void SocialForceSimApp::mst() {
 __global__ void getLocAndColorKernel(SocialForceClone *c, double2 *loc, uchar4 *color, int numElem) {
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
 	if (idx < numElem) {
-		loc[idx] = c->ap->agentPtrArray[idx]->data.loc;
-		color[idx] = c->ap->agentPtrArray[idx]->color;
+		loc[idx] = c->context[idx]->data.loc;
+		color[idx] = c->context[idx]->color;
 	}
 }
 
 void SocialForceSimApp::getLocAndColorFromDevice(){
 	SocialForceClone *c = cAll[paintId];
-	if (c->numElem == 0)
-		return;
-	int gSize = GRID_SIZE(c->numElem);
-	getLocAndColorKernel << <gSize, BLOCK_SIZE >> >(c->selfDev, debugLocDev, debugColorDev, c->numElem);
-	cudaMemcpy(debugLocHost, debugLocDev, sizeof(double2) * c->numElem, cudaMemcpyDeviceToHost);
-	cudaMemcpy(debugColorHost, debugColorDev, sizeof(uchar4) * c->numElem, cudaMemcpyDeviceToHost);
+	int gSize = GRID_SIZE(NUM_CAP);
+	getLocAndColorKernel << <gSize, BLOCK_SIZE >> >(c->selfDev, debugLocDev, debugColorDev, NUM_CAP);
+	cudaMemcpy(debugLocHost, debugLocDev, sizeof(double2) * NUM_CAP, cudaMemcpyDeviceToHost);
+	cudaMemcpy(debugColorHost, debugColorDev, sizeof(uchar4) * NUM_CAP, cudaMemcpyDeviceToHost);
 	cudaMemcpy(c->takenMap, c->selfDev->takenMap, sizeof(bool) * NUM_CELL * NUM_CELL, cudaMemcpyDeviceToHost);
 }
 
@@ -632,17 +667,13 @@ __global__ void initRootCloneKernel(SocialForceClone* c, int numElemLocal) {
 	if (idx < numElemLocal) {
 		c->ap->agentArray[idx].init(c, idx);
 		c->context[idx] = &c->ap->agentArray[idx];
-		c->cloneFlag[idx] = false;
+		c->cloneFlags[idx] = false;
 	}
 	if (idx == 0)
 		c->numElem = numElemLocal;
 }
 
 void SocialForceSimApp::initRootClone(SocialForceClone* cHost, SocialForceClone* cDev) {
-	debugLocHost = new double2[NUM_CAP];
-	debugColorHost = new uchar4[NUM_CAP];
-	cudaMalloc((void**)&debugLocDev, sizeof(double2) * NUM_CAP);
-	cudaMalloc((void**)&debugColorDev, sizeof(uchar4) * NUM_CAP);
 	cHost->numElem = NUM_CAP;
 
 	int gSize = GRID_SIZE(NUM_CAP);

@@ -271,7 +271,7 @@ void CTestVisual2Dlg::myDraw()
 	font.CreatePointFont(80, L"Consolas", &_memDC);
 	CGdiObject *pOldFont = _memDC.SelectObject(&font);*/
 	
-#define USE_GPU 0
+#define USE_GPU 1
 #if USE_GPU == 1
 	cloneApp.getLocAndColorFromDevice();
 #else
