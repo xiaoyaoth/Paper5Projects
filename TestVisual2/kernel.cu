@@ -344,7 +344,13 @@ void SocialForceClone::step(int stepCount) {
 	alterGate(stepCount);
 	if (numElem == 0)
 		return;
-	int gSize = GRID_SIZE(numElem);
+	
+	int tempNum = stepCount / 16;
+	tempNum++;
+	tempNum *= 16;
+	if (tempNum > numElem)
+		return;
+	int gSize = GRID_SIZE(tempNum);
 	clone::stepKernel << <gSize, BLOCK_SIZE >> >(selfDev, numElem);
 }
 
@@ -520,6 +526,7 @@ void SocialForceSimApp::performClone(SocialForceClone *parentClone, SocialForceC
 	getLastCudaError("perform clone");
 
 }
+
 void SocialForceSimApp::compareAndEliminate(SocialForceClone *parentClone, SocialForceClone *childClone) {
 	wchar_t message[20];
 	for (int i = 0; i < childClone->numElem; i++) {
@@ -539,6 +546,7 @@ void SocialForceSimApp::compareAndEliminate(SocialForceClone *parentClone, Socia
 	}
 	childClone->numElem = childClone->ap->reorder(childClone->numElem);
 }
+
 void SocialForceSimApp::proc(int p, int c, bool o, char *s) {
 	performClone(cAll[p], cAll[c]);
 	cAll[c]->step(stepCount);

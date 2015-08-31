@@ -7,7 +7,7 @@
 #include "TestVisual2Dlg.h"
 #include "afxdialogex.h"
 
-#include "SocialForceGPU.h"
+#include "SocialForce_4.h"
 
 extern "C" void runTest();
 
@@ -271,7 +271,7 @@ void CTestVisual2Dlg::myDraw()
 	font.CreatePointFont(80, L"Consolas", &_memDC);
 	CGdiObject *pOldFont = _memDC.SelectObject(&font);*/
 	
-#define USE_GPU 1
+#define USE_GPU 0
 #if USE_GPU == 1
 	cloneApp.getLocAndColorFromDevice();
 #else
@@ -297,7 +297,7 @@ void CTestVisual2Dlg::myDraw()
 		//_memDC.SelectObject(p2);
 		//CRect rect(x - 10, y - 10, x + 10, y + 10);
 		//CString str;
-		//str.Format(L"%d", a->contextId);
+		//str.Format(L"%d", ag.contextId);
 		//_memDC.DrawText(str, rect, DT_CENTER);
 	}
 	//_memDC.SelectObject(pOldFont);

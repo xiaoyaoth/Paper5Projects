@@ -124,6 +124,7 @@
     <ClInclude Include="SocialForce_1.h" />
     <ClInclude Include="SocialForce_2.h" />
     <ClInclude Include="SocialForce_3.h" />
+    <ClInclude Include="SocialForce_4.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="TestVisual2.h" />
@@ -149,6 +150,8 @@
   <ItemGroup>
     <CudaCompile Include="kernel.cu">
       <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
     </CudaCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

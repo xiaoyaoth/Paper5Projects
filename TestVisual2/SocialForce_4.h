@@ -127,16 +127,16 @@ inline double2 operator-(const double2& a, const double2& b)
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 256
-#define NUM_PARAM 4
+#define NUM_CAP 512
+#define NUM_PARAM 2
 #define NUM_STEP 500
-#define NUM_GOAL 1
+#define NUM_GOAL 3
 #define ENV_DIM 64
 #define NUM_CELL 16
 #define CELL_DIM 4
 #define RADIUS_I 5
 
-#define NUM_WALLS 3
+#define NUM_WALLS 4
 
 class SocialForceAgent;
 class SocialForceClone;
@@ -240,16 +240,21 @@ public:
 		memset(context, 0, sizeof(void*) * NUM_CAP);
 		memset(cloneFlag, 0, sizeof(bool) * NUM_CAP);
 		color.x = rand() % 255; color.y = rand() % 255; color.z = rand() % 255;
-
 		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
-		if (id > 0)	cloneParams[id] = 200;
-				
-		double ps = 0.023; double dd = 0.25;
 
-		for (int i = 0; i < NUM_WALLS; i++)
-			walls[i].init(0.25 * (i + 1) * ENV_DIM, -10, 0.25 * (i + 1) * ENV_DIM, ENV_DIM + 10);
-		for (int i = 0; i < NUM_PARAM; i++)
-			gates[i].init(dd * i * ENV_DIM, 0.5 * ENV_DIM, dd * (i + 1) * ENV_DIM, 0.5 * ENV_DIM);
+		double ps = 0.025; double dd = 0.25;
+
+		walls[0].init(0.30 * ENV_DIM, -ps * ENV_DIM, 0.30 * ENV_DIM, (0.20 - ps) * ENV_DIM);
+		walls[1].init(0.30 * ENV_DIM, (0.20 + ps) * ENV_DIM, 0.30 * ENV_DIM, (1.00 + ps) * ENV_DIM);
+		walls[2].init(0.70 * ENV_DIM, -ps * ENV_DIM, 0.70 * ENV_DIM, (0.80 - ps) * ENV_DIM);
+		walls[3].init(0.70 * ENV_DIM, (0.80 + ps) * ENV_DIM, 0.70 * ENV_DIM, (1.00 + ps) * ENV_DIM);
+		
+		gates[0].init(0.30 * ENV_DIM, (0.19 - ps) * ENV_DIM, 0.30 * ENV_DIM, (0.21 + ps) * ENV_DIM);
+		gates[1].init(0.70 * ENV_DIM, (0.79 - ps) * ENV_DIM, 0.70 * ENV_DIM, (0.81 + ps) * ENV_DIM);
+		/*gates[0].init(0, 0, 0, 0);
+		gates[1].init(0, 0, 0, 0);
+		gates[2].init(0, 0, 0, 0);
+		gates[3].init(0, 0, 0, 0);*/
 	}
 	void step(int stepCount);
 	void alterGate(int stepCount);
@@ -334,19 +339,11 @@ void SocialForceAgent::computeIndivSocialForceRoom(const SocialForceAgentData &m
 	fSum.y += fnijy + fkgy;
 }
 void SocialForceAgent::computeForceWithWall(const SocialForceAgentData &dataLocal, obstacleLine &wall, const int &cMass, double2 &fSum) {
-	if (wall.sx == 0 && wall.ex == 0)
-		return;
 	double diw, crx, cry;
 	const double2 &loc = dataLocal.loc;
 
 	diw = wall.pointToLineDist(loc, crx, cry);
-
 	double virDiw = DIST(loc.x, loc.y, crx, cry);
-
-	bool notOnSeg = (crx <= wall.sx && crx <= wall.ex) || (crx >= wall.sx && crx >= wall.ex);
-	notOnSeg = notOnSeg && ((cry <= wall.sy && cry <= wall.ey) || (cry >= wall.sy && crx >= wall.ey));
-	if (notOnSeg)
-		return;
 
 	if (virDiw == 0)
 		return;
@@ -426,6 +423,12 @@ void SocialForceAgent::computeSocialForceRoom(SocialForceAgentData &dataLocal, d
 	dataLocal.numNeighbor = neighborCount;
 }
 void SocialForceAgent::chooseNewGoal(const double2 &newLoc, double epsilon, double2 &newGoal) {
+	if (newLoc.x < 0.30 * ENV_DIM)
+		newGoal = make_double2(0.30 * ENV_DIM, 0.20 * ENV_DIM);
+	else if (newLoc.x < 0.66 * ENV_DIM) 
+		newGoal = make_double2(0.70 * ENV_DIM, 0.80 * ENV_DIM);
+	else
+		newGoal = make_double2(ENV_DIM, 0.50 * ENV_DIM);
 }
 void SocialForceAgent::step(){
 	double cMass = 100;
@@ -448,9 +451,6 @@ void SocialForceAgent::step(){
 	double2 fSum;
 	computeSocialForceRoom(data, fSum);
 
-	if (myClone->cloneid == 1 && loc.x > 0.5 * ENV_DIM)
-		printf("");
-
 	//compute force with walls and gates
 	for (int i = 0; i < NUM_WALLS; i++) {
 		obstacleLine wall = myClone->walls[i];
@@ -458,6 +458,8 @@ void SocialForceAgent::step(){
 	}
 	for (int i = 0; i < NUM_PARAM; i++) {
 		obstacleLine gate = myClone->gates[i];
+		if (gate.sx == 0)
+			continue;
 		computeForceWithWall(data, gate, cMass, fSum);
 	}
 
@@ -486,6 +488,8 @@ void SocialForceAgent::step(){
 	}
 	for (int i = 0; i < NUM_PARAM; i++) {
 		obstacleLine gate = myClone->gates[i];
+		if (gate.sx == 0)
+			continue;
 		computeWallImpaction(data, gate, newVelo, tick, mint);
 	}
 
@@ -516,8 +520,7 @@ void SocialForceAgent::init(int idx) {
 
 	SocialForceAgentData & dataLocal = this->data; //= &sfModel->originalAgents->dataArray[dataSlot];
 	dataLocal.agentPtr = this;
-	int q = rand() % 4;
-	dataLocal.loc.x = ENV_DIM / 4 * q + (float)rand() / (float)RAND_MAX * ENV_DIM / 8;
+	dataLocal.loc.x = ENV_DIM * 0.0 + (float)rand() / (float)RAND_MAX * ENV_DIM * 0.7;
 	dataLocal.loc.y = ENV_DIM * 0.0 + (float)rand() / (float)RAND_MAX * ENV_DIM;
 
 	dataLocal.velocity.x = 2;//4 * (this->random->uniform()-0.5);
@@ -526,14 +529,7 @@ void SocialForceAgent::init(int idx) {
 	dataLocal.v0 = 2;
 	dataLocal.mass = 50;
 	dataLocal.numNeighbor = 0;
-	//chooseNewGoal(dataLocal.loc, 0, dataLocal.goal);
-
-	int ix = dataLocal.loc.x / (0.25 * ENV_DIM);
-	int iy = dataLocal.loc.y / (0.25 * ENV_DIM);
-
-	q = dataLocal.loc.x / (ENV_DIM / 4);
-	this->goalSeq[goalIdx] = make_double2(q * (ENV_DIM / 4), 64);
-	dataLocal.goal = this->goalSeq[goalIdx];
+	chooseNewGoal(dataLocal.loc, 0, dataLocal.goal);	
 	this->dataCopy = dataLocal;
 }
 void SocialForceAgent::initNewClone(SocialForceAgent *parent, SocialForceClone *childClone) {
@@ -571,6 +567,7 @@ public:
 	int stepCount = 0;
 	int rootCloneId = 0;
 	int **cloneTree;
+	int paramWeight[NUM_PARAM];
 
 	int initSimClone() {
 		srand(0);
@@ -584,7 +581,18 @@ public:
 			cloneParams[i] = 1;
 		}
 
+		paramWeight[0] = 1;
+		paramWeight[1] = 3;
+		paramWeight[2] = 1;
+		paramWeight[3] = 3;
+
 		for (int i = 0; i < totalClone; i++) {
+			for (int i = 0; i < NUM_PARAM; i++) {
+				cloneParams[i] = 1;
+			}
+			if (i == 1) cloneParams[0] = 100;
+			if (i == 2) cloneParams[1] = 100;
+			if (i == 3) { cloneParams[0] = 100; cloneParams[1] = 100; }
 			cAll[i] = new SocialForceClone(i, cloneParams);
 		}
 
@@ -592,10 +600,8 @@ public:
 		SocialForceAgent **context = cAll[rootCloneId]->context;
 
 		for (int i = 0; i < NUM_CAP; i++) {
-			//float rx = (float)rand() / (float)RAND_MAX;
-			//float ry = (float)rand() / (float)RAND_MAX;
-			float rx = (float)(i / 32) / (float)32;
-			float ry = (float)(i % 32) / (float)32;
+			float rx = (float)rand() / (float)RAND_MAX;
+			float ry = (float)rand() / (float)RAND_MAX;
 			agents[i].myClone = cAll[rootCloneId];
 			agents[i].contextId = i;
 			agents[i].color = cAll[rootCloneId]->color;
@@ -607,7 +613,7 @@ public:
 		for (int j = 0; j < NUM_CAP; j++)
 			cAll[rootCloneId]->cloneFlag[j] = true;
 
-		//mst();
+		mst();
 
 		return EXIT_SUCCESS;
 	}
@@ -628,19 +634,23 @@ public:
 			obstacleLine g0 = obstacleLine(0, 0, 0, 0);
 			if (g1 != g2) {
 				obstacleLine gate = (g1 != g0) ? g1 : g2;
-				if (gate.pointToLineDist(loc) < 6)
+				if (gate.pointToLineDist(loc) < 6 && loc.x < gate.sx)
 					return true;
 			}
 		}
 
 		// passive cloning condition
-		int q = loc.x / (ENV_DIM / 4);
-		int minx = max((loc.x - RADIUS_I) / CELL_DIM, q * 4);
+		int q1, q2;
+		if (loc.x < ENV_DIM * 0.3) q1 = 0;
+		else if (loc.x < ENV_DIM * 0.7) q1 = 5;
+		else q1 = 1;
+		if (loc.x < ENV_DIM * 0.3) q2 = 4;
+		else if (loc.x < ENV_DIM * 0.7) q2 = 10;
+		else q2 = 15;
+		int minx = max((loc.x - RADIUS_I) / CELL_DIM, q1);
 		int miny = max((loc.y - RADIUS_I) / CELL_DIM, 0);
-		int maxx = min((loc.x + RADIUS_I) / CELL_DIM, (q + 1) * 4 - 1);
+		int maxx = min((loc.x + RADIUS_I) / CELL_DIM, q2);
 		int maxy = min((loc.y + RADIUS_I) / CELL_DIM, NUM_CELL - 1);
-		minx = q * 4;
-		maxx = (q + 1) * 4 - 1;
 		for (int i = minx; i < maxx; i++)
 			for (int j = miny; j < maxy; j++)
 				if (childTakenMap[i * NUM_CELL + j])
@@ -689,8 +699,6 @@ public:
 		for (int i = 0; i < childClone->numElem; i++) {
 			SocialForceAgent &childAgent = *childClone->ap->agentPtrArray[i];
 			SocialForceAgent &parentAgent = *childAgent.myOrigin;
-			if (childClone->cloneid == 1 && childAgent.data.loc.x > 0.5 * ENV_DIM)
-				printf("");
 			if (length(childAgent.dataCopy.velocity - parentAgent.dataCopy.velocity) == 0 &&
 				length(childAgent.dataCopy.loc - parentAgent.dataCopy.loc) == 0) {
 				childClone->ap->takenFlags[i] = false;
@@ -757,8 +765,10 @@ public:
 		for (int i = 0; i < totalClone; i++) {
 			for (int j = 0; j < totalClone; j++) {
 				for (int k = 0; k < NUM_PARAM; k++) {
-					if (cAll[i]->cloneParams[k] != cAll[j]->cloneParams[k])
+					if (cAll[i]->cloneParams[k] != cAll[j]->cloneParams[k]) {
+						//cloneDiff[i][j] += cAll[i]->cloneParams[k] * paramWeight[k] + cAll[j]->cloneParams[k] * paramWeight[k];
 						cloneDiff[i][j]++;
+					}
 				}
 				wchar_t message[20];
 				swprintf_s(message, 20, L"%d ", cloneDiff[i][j]);
@@ -911,8 +921,9 @@ public:
 	void stepApp5(bool o) {
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
-		for (int i = 1; i < totalClone; i++)
-			proc(0, i, 0, "s5");
+		proc(0, 1, 0, "");
+		proc(0, 2, 0, "");
+		proc(2, 3, 0, "");
 		for (int j = 0; j < totalClone; j++) {
 			cAll[j]->swap();
 		}

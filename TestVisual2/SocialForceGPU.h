@@ -156,7 +156,7 @@ namespace util {
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 512
+#define NUM_CAP 1024
 #define NUM_PARAM 24
 #define NUM_STEP 100
 #define NUM_GOAL 7
@@ -349,8 +349,8 @@ public:
 class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
-	int paintId = 1;
-	int totalClone = 2;
+	int paintId = 0;
+	int totalClone = 1;
 	int stepCount = 0;
 	int rootCloneId = 0;
 	int **cloneTree;
@@ -417,10 +417,11 @@ public:
 	void stepApp(){
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
-		proc(0, 1, 0, "g1");
+		//proc(0, 1, 0, "g1");
 		
 		cAll[rootCloneId]->swap();
-		cAll[1]->swap();
+		//cAll[1]->swap();
+		cudaDeviceSynchronize();
 		getLastCudaError("step");
 	}
 
