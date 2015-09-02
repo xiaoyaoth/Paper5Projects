@@ -448,6 +448,7 @@ namespace AppUtil {
 		if (idx == 0)
 			printf("%d\n", c->numElem);
 	}
+	
 	__global__ void compareAndEliminateKernel(SocialForceClone *p, SocialForceClone *c, int numElem) {
 		int idx = threadIdx.x + blockIdx.x * blockDim.x;
 		if (idx < numElem) {
@@ -483,6 +484,7 @@ namespace AppUtil {
 			c->numElem = i;
 		}
 	}
+
 };
 
 void SocialForceSimApp::performClone(SocialForceClone *parentClone, SocialForceClone *childClone) {
@@ -527,7 +529,8 @@ void SocialForceSimApp::performClone(SocialForceClone *parentClone, SocialForceC
 
 }
 
-void SocialForceSimApp::compareAndEliminate(SocialForceClone *parentClone, SocialForceClone *childClone) {
+void compareAndEliminateCPU(SocialForceClone *parentClone, SocialForceClone *childClone)
+{
 	wchar_t message[20];
 	for (int i = 0; i < childClone->numElem; i++) {
 		SocialForceAgent &childAgent = *childClone->ap->agentPtrArray[i];
@@ -547,6 +550,15 @@ void SocialForceSimApp::compareAndEliminate(SocialForceClone *parentClone, Socia
 	childClone->numElem = childClone->ap->reorder(childClone->numElem);
 }
 
+void SocialForceSimApp::compareAndEliminate(SocialForceClone *parentClone, SocialForceClone *childClone) {
+	if (childClone->numElem == 0) return;
+	int gSize = GRID_SIZE(childClone->numElem);
+	AppUtil::compareAndEliminateKernel << <gSize, BLOCK_SIZE >> >(parentClone->selfDev, childClone->selfDev, childClone->numElem);
+	gSize = GRID_SIZE(NUM_CAP);
+	AppUtil::reorderKernel << <1, 1 >> >(childClone->selfDev, childClone->numElem);
+	cudaMemcpy(childClone, childClone->selfDev, sizeof(SocialForceClone), cudaMemcpyDeviceToHost);
+}
+
 void SocialForceSimApp::proc(int p, int c, bool o, char *s) {
 	performClone(cAll[p], cAll[c]);
 	cAll[c]->step(stepCount);
@@ -555,7 +567,7 @@ void SocialForceSimApp::proc(int p, int c, bool o, char *s) {
 			cAll[c]->output(stepCount, s);
 	}
 	//cAll[c]->output2(stepCount, s);
-	//compareAndEliminate(cAll[p], cAll[c]);
+	compareAndEliminate(cAll[p], cAll[c]);
 }
 
 void swap(int **cloneTree, int a, int b) {

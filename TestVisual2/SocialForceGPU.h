@@ -12,6 +12,8 @@
 #include "device_launch_parameters.h"
 #include <curand_kernel.h>
 
+#define USE_GPU 1
+
 using namespace std;
 
 #define DIST(ax, ay, bx, by) sqrt((ax-bx)*(ax-bx)+(ay-by)*(ay-by))
@@ -350,7 +352,7 @@ class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
 	int paintId = 0;
-	int totalClone = 1;
+	int totalClone = 2;
 	int stepCount = 0;
 	int rootCloneId = 0;
 	int **cloneTree;
@@ -417,10 +419,10 @@ public:
 	void stepApp(){
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
-		//proc(0, 1, 0, "g1");
+		proc(0, 1, 0, "g1");
 		
 		cAll[rootCloneId]->swap();
-		//cAll[1]->swap();
+		cAll[1]->swap();
 		cudaDeviceSynchronize();
 		getLastCudaError("step");
 	}
