@@ -158,11 +158,11 @@ namespace util {
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 1024
+#define NUM_CAP 4096
 #define NUM_PARAM 24
 #define NUM_STEP 100
 #define NUM_GOAL 7
-#define ENV_DIM 64
+#define ENV_DIM 128
 #define NUM_CELL 16
 #define CELL_DIM 4
 #define RADIUS_I 5
@@ -278,11 +278,10 @@ public:
 		cudaMemset(cloneFlags, 0, sizeof(bool) * NUM_CAP);
 		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
 		
-		int r1 = id > 0 ? 1 + rand() % 4 : 0;
+		int r1 = id > 0 ? 1 : 0;
 		for (int i = 0; i < r1; i++) {
-			int r2 = rand() & NUM_PARAM;
-			r2 = 2;
-			cloneParams[r2] = rand() % NUM_STEP;
+			int r2 = 0;
+			cloneParams[r2] = 2;
 		}
 
 		double ps = 0.023; double dd = 0.25;
@@ -352,7 +351,7 @@ class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
 	int paintId = 0;
-	int totalClone = 2;
+	int totalClone = 1;
 	int stepCount = 0;
 	int rootCloneId = 0;
 	int **cloneTree;
@@ -382,7 +381,7 @@ public:
 
 		int cloneParams[NUM_PARAM];
 		for (int i = 0; i < NUM_PARAM; i++) {
-			cloneParams[i] = 1;
+			cloneParams[i] = 100;
 		}
 
 		for (int i = 0; i < totalClone; i++) {
@@ -419,10 +418,10 @@ public:
 	void stepApp(){
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
-		proc(0, 1, 0, "g1");
+		if (totalClone > 1) proc(0, 1, 0, "g1");
 		
 		cAll[rootCloneId]->swap();
-		cAll[1]->swap();
+		if (totalClone > 1) cAll[1]->swap();
 		cudaDeviceSynchronize();
 		getLastCudaError("step");
 	}

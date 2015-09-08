@@ -351,6 +351,11 @@ void SocialForceClone::step(int stepCount) {
 	if (tempNum > numElem)
 		return;
 	int gSize = GRID_SIZE(tempNum);
+	wchar_t message[20];
+	swprintf_s(message, 20, L"tempNum: %d\n", tempNum);
+	OutputDebugString(message);
+
+	//int gSize = GRID_SIZE(numElem);
 	clone::stepKernel << <gSize, BLOCK_SIZE >> >(selfDev, numElem);
 }
 
@@ -367,10 +372,8 @@ void SocialForceClone::alterGate(int stepCount) {
 		if (cloneParams[i] == stepCount) {
 			changed = true;
 			gates[i].init(0, 0, 0, 0);
+			cudaMemcpy(&selfDev->gates[i], &gates[i], sizeof(obstacleLine), cudaMemcpyHostToDevice);
 		}
-	}
-	if (changed) {
-		cudaMemcpy(selfDev->gates, gates, sizeof(obstacleLine) * NUM_PARAM, cudaMemcpyHostToDevice);
 	}
 }
 
@@ -439,6 +442,7 @@ namespace AppUtil {
 			if (cloningCondition(agent, p, c)) {
 				uint lastNum = atomicInc(&c->numElem, numCap);
 				SocialForceAgent& childAgent = *c->ap->agentPtrArray[lastNum];
+				c->ap->takenFlags[lastNum] = true;
 				childAgent.initNewClone(agent, c);
 				c->context[childAgent.contextId] = &childAgent;
 				c->cloneFlags[childAgent.contextId] = true;
@@ -454,8 +458,9 @@ namespace AppUtil {
 		if (idx < numElem) {
 			SocialForceAgent &childAgent = *c->ap->agentPtrArray[idx];
 			SocialForceAgent &parentAgent = *p->context[childAgent.contextId]; // *(SocialForceAgent*)childAgent.myOrigin;
-			if (length(childAgent.dataCopy.velocity - parentAgent.dataCopy.velocity) == 0 &&
-				length(childAgent.dataCopy.loc - parentAgent.dataCopy.loc) == 0) {
+			double velDiff = length(childAgent.dataCopy.velocity - parentAgent.dataCopy.velocity);
+			double locDiff = length(childAgent.dataCopy.loc - parentAgent.dataCopy.loc);
+			if (locDiff < 0.001 && velDiff	< 0.001) {
 				c->ap->takenFlags[idx] = false;
 				c->cloneFlags[childAgent.contextId] = false;
 			}
@@ -557,6 +562,9 @@ void SocialForceSimApp::compareAndEliminate(SocialForceClone *parentClone, Socia
 	gSize = GRID_SIZE(NUM_CAP);
 	AppUtil::reorderKernel << <1, 1 >> >(childClone->selfDev, childClone->numElem);
 	cudaMemcpy(childClone, childClone->selfDev, sizeof(SocialForceClone), cudaMemcpyDeviceToHost);
+	wchar_t message[20];
+	swprintf_s(message, 20, L"numElem: %d\n", childClone->numElem);
+	OutputDebugString(message);
 }
 
 void SocialForceSimApp::proc(int p, int c, bool o, char *s) {

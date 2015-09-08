@@ -7,7 +7,7 @@
 #include "TestVisual2Dlg.h"
 #include "afxdialogex.h"
 
-#include "SocialForceGPU.h"
+#include "SocialForce_5.h"
 
 extern "C" void runTest();
 
@@ -291,12 +291,12 @@ void CTestVisual2Dlg::myDraw()
 		double y = loc.y / ENV_DIM * screenHeight;
 		_memDC.Ellipse(x - 3, y - 3, x + 3, y + 3);
 		
-		//CPen p2(PS_SOLID, 1, RGB(0, 0, 0));
-		//_memDC.SelectObject(p2);
-		//CRect rect(x - 10, y - 10, x + 10, y + 10);
-		//CString str;
-		//str.Format(L"%d", ag.contextId);
-		//_memDC.DrawText(str, rect, DT_CENTER);
+		CPen p2(PS_SOLID, 1, RGB(0, 0, 0));
+		_memDC.SelectObject(p2);
+		CRect rect(x - 10, y - 10, x + 10, y + 10);
+		CString str;
+		str.Format(L"%d", ag.contextId);
+		_memDC.DrawText(str, rect, DT_CENTER);
 	}
 	//_memDC.SelectObject(pOldFont);
 
