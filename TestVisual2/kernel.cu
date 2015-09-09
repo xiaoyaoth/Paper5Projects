@@ -1,7 +1,7 @@
 #include "cuda_runtime.h"
 #include <fstream>
 #include "SocialForceGPU.h"
-
+#include <omp.h>
 __global__ void testFunc() {
 
 }
@@ -345,17 +345,17 @@ void SocialForceClone::step(int stepCount) {
 	if (numElem == 0)
 		return;
 	
-	int tempNum = stepCount / 16;
-	tempNum++;
-	tempNum *= 16;
-	if (tempNum > numElem)
-		return;
-	int gSize = GRID_SIZE(tempNum);
-	wchar_t message[20];
-	swprintf_s(message, 20, L"tempNum: %d\n", tempNum);
-	OutputDebugString(message);
+	//int tempNum = stepCount / 4;
+	//tempNum++;
+	//tempNum *= 4;
+	//if (tempNum > numElem)
+	//	return;
+	//int gSize = GRID_SIZE(tempNum);
+	//wchar_t message[20];
+	//swprintf_s(message, 20, L"tempNum: %d\n", tempNum);
+	//OutputDebugString(message);
 
-	//int gSize = GRID_SIZE(numElem);
+	int gSize = GRID_SIZE(numElem);
 	clone::stepKernel << <gSize, BLOCK_SIZE >> >(selfDev, numElem);
 }
 
@@ -449,8 +449,6 @@ namespace AppUtil {
 				//c->numElem++; /* not written back */
 			}
 		}
-		if (idx == 0)
-			printf("%d\n", c->numElem);
 	}
 	
 	__global__ void compareAndEliminateKernel(SocialForceClone *p, SocialForceClone *c, int numElem) {
@@ -460,7 +458,7 @@ namespace AppUtil {
 			SocialForceAgent &parentAgent = *p->context[childAgent.contextId]; // *(SocialForceAgent*)childAgent.myOrigin;
 			double velDiff = length(childAgent.dataCopy.velocity - parentAgent.dataCopy.velocity);
 			double locDiff = length(childAgent.dataCopy.loc - parentAgent.dataCopy.loc);
-			if (locDiff < 0.001 && velDiff	< 0.001) {
+			if (locDiff < 0.01 && velDiff	< 0.01) {
 				c->ap->takenFlags[idx] = false;
 				c->cloneFlags[childAgent.contextId] = false;
 			}
@@ -562,9 +560,9 @@ void SocialForceSimApp::compareAndEliminate(SocialForceClone *parentClone, Socia
 	gSize = GRID_SIZE(NUM_CAP);
 	AppUtil::reorderKernel << <1, 1 >> >(childClone->selfDev, childClone->numElem);
 	cudaMemcpy(childClone, childClone->selfDev, sizeof(SocialForceClone), cudaMemcpyDeviceToHost);
-	wchar_t message[20];
-	swprintf_s(message, 20, L"numElem: %d\n", childClone->numElem);
-	OutputDebugString(message);
+	//wchar_t message[20];
+	//swprintf_s(message, 20, L"numElem: %d\n", childClone->numElem);
+	//OutputDebugString(message);
 }
 
 void SocialForceSimApp::proc(int p, int c, bool o, char *s) {
@@ -656,7 +654,7 @@ void SocialForceSimApp::mst() {
 
 	quickSort(cloneTree, 0, totalClone);
 
-	for (int i = 0; i < totalClone; i++) {
+	for (int i = 1; i < totalClone; i++) {
 		wchar_t message[20];
 		swprintf_s(message, 20, L"%d - %d: %d\n", cloneTree[0][i], cloneTree[1][i], cloneDiff[i][parent[i]]);
 		OutputDebugString(message);

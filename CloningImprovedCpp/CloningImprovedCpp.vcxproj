@@ -84,6 +84,9 @@
     <CudaCompile>
       <Include>./;../gsim;../common;</Include>
     </CudaCompile>
+    <CudaLink>
+      <AdditionalOptions>-Xcompiler "/wd 4819"  %(AdditionalOptions)</AdditionalOptions>
+    </CudaLink>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="cloningImprovedCpp.cpp" />

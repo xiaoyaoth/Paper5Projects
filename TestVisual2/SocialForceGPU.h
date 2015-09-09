@@ -158,14 +158,14 @@ namespace util {
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 4096
+#define NUM_CAP 256
 #define NUM_PARAM 24
 #define NUM_STEP 100
 #define NUM_GOAL 7
 #define ENV_DIM 128
 #define NUM_CELL 16
-#define CELL_DIM 4
-#define RADIUS_I 5
+#define CELL_DIM 8
+#define RADIUS_I 6
 
 #define NUM_WALLS 30
 
@@ -216,7 +216,7 @@ public:
 	//int numElem;
 
 	__host__ AgentPool(int numCap) {
-		cudaMalloc((void**)&agentArray, sizeof(SocialForceAgent) * numCap * 2);
+		cudaMalloc((void**)&agentArray, sizeof(SocialForceAgent) * numCap * 1.5);
 		cudaMalloc((void**)&agentPtrArray, sizeof(SocialForceAgent*) * numCap);
 		cudaMalloc((void**)&takenFlags, sizeof(bool) * numCap);
 		cudaMemset(takenFlags, 0, sizeof(bool) * numCap);
@@ -267,6 +267,10 @@ public:
 	fstream fout;
 
 	__host__ SocialForceClone(int id, int pv1[NUM_PARAM]) {
+		this->color.x = rand() % 256;
+		this->color.y = rand() % 256;
+		this->color.z = rand() % 256;
+		this->color.w = rand() % 256;
 		cloneid = id;
 		numElem = 0;
 		apHost = new AgentPool(NUM_CAP);
@@ -278,10 +282,10 @@ public:
 		cudaMemset(cloneFlags, 0, sizeof(bool) * NUM_CAP);
 		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
 		
-		int r1 = id > 0 ? 1 : 0;
+		int r1 = id > 0 ? 1 + rand() % 4 : 0;
 		for (int i = 0; i < r1; i++) {
-			int r2 = 0;
-			cloneParams[r2] = 2;
+			int r2 = rand() % NUM_PARAM;
+			cloneParams[r2] = rand() % NUM_STEP;
 		}
 
 		double ps = 0.023; double dd = 0.25;
@@ -346,12 +350,11 @@ public:
 	}
 };
 
-
 class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
-	int paintId = 0;
-	int totalClone = 1;
+	int paintId = 1;
+	int totalClone = 16;
 	int stepCount = 0;
 	int rootCloneId = 0;
 	int **cloneTree;
@@ -395,7 +398,6 @@ public:
 
 		return EXIT_SUCCESS;
 	}
-
 	void stepApp5(bool o) {
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
@@ -405,7 +407,6 @@ public:
 			cAll[j]->swap();
 		}
 	}
-
 	void stepApp6(bool o) {
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
@@ -418,10 +419,11 @@ public:
 	void stepApp(){
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
-		if (totalClone > 1) proc(0, 1, 0, "g1");
+		for (int i = 1; i < totalClone; i++)
+			proc(0, i, 0, "g1");
 		
-		cAll[rootCloneId]->swap();
-		if (totalClone > 1) cAll[1]->swap();
+		for (int i = 0; i < totalClone; i++)
+			cAll[i]->swap();
 		cudaDeviceSynchronize();
 		getLastCudaError("step");
 	}

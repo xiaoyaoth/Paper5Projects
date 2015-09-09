@@ -246,7 +246,7 @@ public:
 		double ps = 0.025; double dd = 0.25;
 		walls[0].init(0, 0, 0, 0);
 		
-		if (id == 1) {
+		if (id == 0) {
 			for (int i = 0; i < NUM_PARAM; i++)
 				cloneParams[i] = 1;
 			gates[0].init((0.30 - ps) * ENV_DIM, (0.50 - ps) * ENV_DIM, (0.30 + ps) * ENV_DIM, (0.50 - ps) * ENV_DIM);
@@ -850,6 +850,6 @@ public:
 			cAll[i]->swap();
 	}
 	void stepApp(){
-		stepApp1(1);
+		stepApp0(1);
 	}
 };

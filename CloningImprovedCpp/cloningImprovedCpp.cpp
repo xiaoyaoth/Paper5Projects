@@ -31,8 +31,10 @@ int main(int argc, char **argv) {
 	SocialForceSimApp app1;
 	app1.initSimClone();
 	StartCounter();
-	for (int i = 0; i < 1000; i++) {
+	for (int i = 0; i < 500; i++) {
+		cout << i << " ";
 		app1.stepApp();
+		//fout << i / 4 << "\t";
 		fout << GetCounter() << "\t";
 		for (int i = 0; i < app1.totalClone; i++)
 			fout << app1.cAll[i]->numElem << "\t";

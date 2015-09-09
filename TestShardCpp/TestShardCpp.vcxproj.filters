@@ -15,8 +15,8 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Source.cpp">
+    <CudaCompile Include="TestCUDAOpenMP.cu">
       <Filter>Source Files</Filter>
-    </ClCompile>
+    </CudaCompile>
   </ItemGroup>
 </Project>
