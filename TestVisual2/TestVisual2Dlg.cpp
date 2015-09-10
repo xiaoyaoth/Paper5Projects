@@ -7,7 +7,7 @@
 #include "TestVisual2Dlg.h"
 #include "afxdialogex.h"
 
-#include "SocialForceGPU.h"
+#include "SocialForce_3.h"
 
 extern "C" void runTest();
 

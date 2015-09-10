@@ -81,6 +81,8 @@ void SocialForceAgent::computeIndivSocialForceRoom(const SocialForceAgentData &m
 	fSum.y += fnijy + fkgy;
 }
 __device__ void SocialForceAgent::computeForceWithWall(const SocialForceAgentData &dataLocal, obstacleLine &wall, const int &cMass, double2 &fSum) {
+	double2 wl = make_double2(wall.ex - wall.sx, wall.ey - wall.sy);
+	if (length(wl) == 0) return;
 	double diw, crx, cry;
 	const double2 &loc = dataLocal.loc;
 
@@ -206,8 +208,6 @@ __device__ void SocialForceAgent::step(){
 	}
 	for (int i = 0; i < NUM_PARAM; i++) {
 		obstacleLine gate = myClone->gates[i];
-		if (gate.sx == 0)
-			continue;
 		computeForceWithWall(data, gate, cMass, fSum);
 	}
 
@@ -236,8 +236,6 @@ __device__ void SocialForceAgent::step(){
 	}
 	for (int i = 0; i < NUM_PARAM; i++) {
 		obstacleLine gate = myClone->gates[i];
-		if (gate.sx == 0)
-			continue;
 		computeWallImpaction(data, gate, newVelo, tick, mint);
 	}
 

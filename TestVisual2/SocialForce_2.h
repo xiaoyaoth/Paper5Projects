@@ -782,8 +782,8 @@ public:
 			for (int j = 0; j < totalClone; j++) {
 				for (int k = 0; k < NUM_PARAM; k++) {
 					if (cAll[i]->cloneParams[k] != cAll[j]->cloneParams[k]) {
-						//cloneDiff[i][j] += cAll[i]->cloneParams[k] * paramWeight[k] + cAll[j]->cloneParams[k] * paramWeight[k];
-						cloneDiff[i][j]++;
+						cloneDiff[i][j] += cAll[i]->cloneParams[k] * paramWeight[k] + cAll[j]->cloneParams[k] * paramWeight[k];
+						//cloneDiff[i][j]++;
 					}
 				}
 				wchar_t message[20];
