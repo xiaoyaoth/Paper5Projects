@@ -231,6 +231,7 @@ public:
 	fstream fout;
 
 	SocialForceClone(int id, int pv1[NUM_PARAM]) {
+		numElem = 0;
 		cloneid = id;
 		ap = new AgentPool(NUM_CAP);
 		//agents = new SocialForceAgent[NUM_CAP];
@@ -241,7 +242,7 @@ public:
 		color.x = rand() % 255; color.y = rand() % 255; color.z = rand() % 255;
 
 		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
-		int r1 = id > 0 ? 1 + rand() % 4 : 0;
+		int r1 = 1 + rand() % 4;
 
 
 		for (int i = 0; i < r1; i++) {
@@ -625,7 +626,8 @@ public:
 		cAll = new SocialForceClone*[totalClone];
 		cloneTree = new int*[2];
 		int j = 0;
-
+#define WEIGHT_DEF 2
+#if WEIGHT_DEF == 1
 		int r1 = 32;
 		for (int ix = 1; ix < 4; ix++) {
 			int r2 = r1;
@@ -647,6 +649,29 @@ public:
 			}
 			r1 = r1 / 2;
 		}
+#else
+		int r1 = 1;
+		for (int ix = 1; ix < 4; ix++) {
+			int r2 = r1;
+			for (int iy = 0; iy < 4; iy++) {
+				int idx = (ix - 1) * 4 + iy;
+				paramWeight[idx] = r2;
+				r2 = r2 * 2;
+			}
+			r1 = r1 * 2;
+		}
+
+		r1 = 1;
+		for (int iy = 1; iy < 4; iy++) {
+			int r2 = r1;
+			for (int ix = 0; ix < 4; ix++) {
+				int idx = (iy - 1) * 4 + ix + 12;
+				paramWeight[idx] = r2;
+				r2 = r2 * 2;
+			}
+			r1 = r1 * 2;
+		}
+#endif
 
 		int cloneParams[NUM_PARAM];
 		for (int i = 0; i < NUM_PARAM; i++) {
@@ -676,7 +701,61 @@ public:
 		for (int j = 0; j < NUM_CAP; j++)
 			cAll[rootCloneId]->cloneFlag[j] = true;
 
-		mst();
+		//mst();
+		int i = 1;
+		cloneTree[0] = new int[totalClone];
+		cloneTree[1] = new int[totalClone];
+#define CLONE_OPT 3
+#if CLONE_OPT == 1
+		cloneTree[0][i] = 0, cloneTree[1][i] = 4; i++;
+		cloneTree[0][i] = 0, cloneTree[1][i] = 13; i++;
+		cloneTree[0][i] = 0, cloneTree[1][i] = 1; i++;
+		cloneTree[0][i] = 0, cloneTree[1][i] = 10; i++;
+		cloneTree[0][i] = 1, cloneTree[1][i] = 14; i++;
+		cloneTree[0][i] = 1, cloneTree[1][i] = 11; i++;
+		cloneTree[0][i] = 1, cloneTree[1][i] = 6; i++;
+		cloneTree[0][i] = 1, cloneTree[1][i] = 3; i++;
+		cloneTree[0][i] = 1, cloneTree[1][i] = 7; i++;
+		cloneTree[0][i] = 1, cloneTree[1][i] = 15; i++;
+		cloneTree[0][i] = 1, cloneTree[1][i] = 5; i++;
+		cloneTree[0][i] = 1, cloneTree[1][i] = 2; i++;
+		cloneTree[0][i] = 1, cloneTree[1][i] = 12; i++;
+		cloneTree[0][i] = 5, cloneTree[1][i] = 9; i++;
+		cloneTree[0][i] = 14, cloneTree[1][i] = 8; i++;
+#elif CLONE_OPT == 2
+		cloneTree[0][i] = 0, cloneTree[1][i] = 4; i++;
+		cloneTree[0][i] = 0, cloneTree[1][i] = 10; i++;
+		cloneTree[0][i] = 0, cloneTree[1][i] = 13; i++;
+		cloneTree[0][i] = 4, cloneTree[1][i] = 14; i++;
+		cloneTree[0][i] = 4, cloneTree[1][i] = 11; i++;
+		cloneTree[0][i] = 4, cloneTree[1][i] = 2; i++;
+		cloneTree[0][i] = 4, cloneTree[1][i] = 3; i++;
+		cloneTree[0][i] = 14, cloneTree[1][i] = 5; i++;
+		cloneTree[0][i] = 14, cloneTree[1][i] = 15; i++;
+		cloneTree[0][i] = 14, cloneTree[1][i] = 1; i++;
+		cloneTree[0][i] = 14, cloneTree[1][i] = 6; i++;
+		cloneTree[0][i] = 14, cloneTree[1][i] = 12; i++;
+		cloneTree[0][i] = 14, cloneTree[1][i] = 8; i++;
+		cloneTree[0][i] = 14, cloneTree[1][i] = 7; i++;
+		cloneTree[0][i] = 5, cloneTree[1][i] = 9; i++;
+#else
+		cloneTree[0][i] = 0, cloneTree[1][i] = 10; i++;
+		cloneTree[0][i] = 0, cloneTree[1][i] = 12; i++;
+		cloneTree[0][i] = 0, cloneTree[1][i] = 13; i++;
+		cloneTree[0][i] = 0, cloneTree[1][i] = 4; i++;
+		cloneTree[0][i] = 12, cloneTree[1][i] = 11; i++;
+		cloneTree[0][i] = 12, cloneTree[1][i] = 14; i++;
+		cloneTree[0][i] = 12, cloneTree[1][i] = 3; i++;
+		cloneTree[0][i] = 12, cloneTree[1][i] = 2; i++;
+		cloneTree[0][i] = 12, cloneTree[1][i] = 15; i++;
+		cloneTree[0][i] = 12, cloneTree[1][i] = 6; i++;
+		cloneTree[0][i] = 12, cloneTree[1][i] = 5; i++;
+		cloneTree[0][i] = 12, cloneTree[1][i] = 1; i++;
+		cloneTree[0][i] = 12, cloneTree[1][i] = 7; i++;
+		cloneTree[0][i] = 14, cloneTree[1][i] = 8; i++;
+		cloneTree[0][i] = 5, cloneTree[1][i] = 9; i++;
+#endif
+
 
 		return EXIT_SUCCESS;
 	}
@@ -701,15 +780,13 @@ public:
 		}
 
 		// passive cloning condition
-		int q = loc.x / (ENV_DIM / 4);
-		int minx = max((loc.x - RADIUS_I) / CELL_DIM, q * 4);
+		//int q = loc.x / (ENV_DIM / 4);
+		int minx = max((loc.x - RADIUS_I) / CELL_DIM, 0);
 		int miny = max((loc.y - RADIUS_I) / CELL_DIM, 0);
-		int maxx = min((loc.x + RADIUS_I) / CELL_DIM, (q + 1) * 4 - 1);
+		int maxx = min((loc.x + RADIUS_I) / CELL_DIM, NUM_CELL - 1);
 		int maxy = min((loc.y + RADIUS_I) / CELL_DIM, NUM_CELL - 1);
-		minx = q * 4;
-		maxx = (q + 1) * 4 - 1;
-		for (int i = minx; i < maxx; i++)
-			for (int j = miny; j < maxy; j++)
+		for (int i = minx; i <= maxx; i++)
+			for (int j = miny; j <= maxy; j++)
 				if (childTakenMap[i * NUM_CELL + j])
 					return true;
 
@@ -874,7 +951,7 @@ public:
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
 		for (int i = 1; i < totalClone; i++)
-			proc(0, i, 0, "s5");
+			proc(cloneTree[0][i], cloneTree[1][i], 0, "s5");
 		for (int j = 0; j < totalClone; j++) {
 			cAll[j]->swap();
 		}

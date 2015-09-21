@@ -7,13 +7,13 @@
 #include "ForestFireMFCDlg.h"
 #include "afxdialogex.h"
 
-#include "SocialForce.h"
+#include "ForestFire.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
 
-SocialForceSimApp cloneApp;
+ForestFireSimApp cloneApp;
 // CAboutDlg dialog used for App About
 
 class CAboutDlg : public CDialogEx
@@ -105,13 +105,13 @@ BOOL CForestFireMFCDlg::OnInitDialog()
 
 	// TODO: Add extra initialization here
 	pDC = this->GetDC();
-	screenWidth = 640;
-	screenHeight = 640;
-	MoveWindow(0, 0, screenWidth + 18, screenHeight + 40, true);
 	fps = 100;
-	SetTimer(1, 1000 / fps, NULL);
-
-	cloneApp.initSimClone();
+	SetTimer(1, 1000 / fps, NULL); 
+	cloneApp.init();
+	cellSize = 3;
+	screenWidth = cloneApp.ncols * cellSize;
+	screenHeight = cloneApp.nrows * cellSize;
+	MoveWindow(0, 0, screenWidth + 18, screenHeight + 40, true);
 
 	return TRUE;  // return TRUE  unless you set the focus to a control
 }
@@ -169,14 +169,14 @@ HCURSOR CForestFireMFCDlg::OnQueryDragIcon()
 void CForestFireMFCDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	// TODO: Add your message handler code here and/or call default
-	cloneApp.stepApp();
+	cloneApp.step();
 	myDraw();
 
 	CDialogEx::OnTimer(nIDEvent);
 }
 
 void CForestFireMFCDlg::myDraw() {
-	CClientDC dc(this);
+	CDC _memDC;
 	_memDC.CreateCompatibleDC(NULL);
 	_memBitmap.CreateCompatibleBitmap(pDC, screenWidth, screenHeight);
 	CBitmap *pOldBitmap = _memDC.SelectObject(&_memBitmap);
@@ -185,7 +185,22 @@ void CForestFireMFCDlg::myDraw() {
 	CRect rect0(0, 0, screenWidth, screenHeight + 50);
 	_memDC.Rectangle(rect0);
 
+	_memDC.SelectStockObject(NULL_BRUSH);
+	for (int i = 0; i < cloneApp.nrows; i++) {
+		for (int j = 0; j < cloneApp.ncols; j++) {
+			int val = cloneApp.paintMap[i][j];
+			val = val == -9999 ? 0 : 50 + val * 200 / cloneApp.paintMax;
+			//val = rand() % 255;
+			CPen p(PS_SOLID, 0, RGB(val, val, val));
+			CBrush b(RGB(val, val, val));
+			_memDC.SelectObject(p);
+			_memDC.SelectObject(b);
+			_memDC.Rectangle(j * cellSize, i * cellSize, (j + 1) * cellSize, (i + 1) * cellSize);
+		}
+	}
+
 	// before draw
+	/*
 	_memDC.SelectStockObject(NULL_BRUSH);
 	int paintId = cloneApp.paintId;
 	SocialForceClone *c = cloneApp.cAll[paintId];
@@ -246,6 +261,7 @@ void CForestFireMFCDlg::myDraw() {
 		double y = c->context[i]->data.loc.y / ENV_DIM * screenHeight;
 		_memDC.Ellipse(x - 3, y - 3, x + 3, y + 3);
 	}
+	*/
 
 	// after draw
 	pDC->BitBlt(0, 0, screenWidth, screenHeight, &_memDC, 0, 0, SRCCOPY);
@@ -259,7 +275,44 @@ void CForestFireMFCDlg::myDraw() {
 void CForestFireMFCDlg::OnLButtonDblClk(UINT nFlags, CPoint point)
 {
 	// TODO: Add your message handler code here and/or call default
-	cloneApp.paintId = (cloneApp.paintId + 1) % cloneApp.totalClone;
-
+	cloneApp.paintLayer = (cloneApp.paintLayer + 1) % 6;
+	WCHAR title[128];
+	switch (cloneApp.paintLayer) {
+	case 0:
+		cloneApp.paintMap = cloneApp.elevMap;
+		cloneApp.paintMax = cloneApp.maxElev;
+		swprintf_s(title, 128, L"elevation map");
+		this->SetWindowText((LPCTSTR)title);
+		break;
+	case 1:
+		cloneApp.paintMap = cloneApp.slopeMap;
+		cloneApp.paintMax = cloneApp.maxSlope;
+		swprintf_s(title, 128, L"slope map");
+		this->SetWindowText((LPCTSTR)title);
+		break;
+	case 2:
+		cloneApp.paintMap = cloneApp.aspectMap;
+		cloneApp.paintMax = cloneApp.maxAspect;
+		swprintf_s(title, 128, L"aspect map");
+		this->SetWindowText((LPCTSTR)title);
+		break;
+	case 3:
+		cloneApp.paintMap = cloneApp.fuelMap;
+		cloneApp.paintMax = cloneApp.maxFuel;
+		swprintf_s(title, 128, L"fuel map");
+		this->SetWindowText((LPCTSTR)title);
+		break;
+	case 4:
+		cloneApp.paintMap = cloneApp.canopyMap;
+		cloneApp.paintMax = cloneApp.maxCanopy;
+		swprintf_s(title, 128, L"canopy map");
+		this->SetWindowText((LPCTSTR)title);
+		break;
+	case 5:
+		cloneApp.paintMap = cloneApp.heightMap;
+		cloneApp.paintMax = cloneApp.maxHeight;
+		swprintf_s(title, 128, L"height map");
+		this->SetWindowText((LPCTSTR)title);
+	}
 	CDialogEx::OnLButtonDblClk(nFlags, point);
 }

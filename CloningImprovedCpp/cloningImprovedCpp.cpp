@@ -1,4 +1,4 @@
-#include "../TestVisual2/SocialForceGPU.h"
+#include "../TestVisual2/SocialForce_2.h"
 #include <iostream>
 
 using namespace std;
@@ -26,7 +26,7 @@ double GetCounter()
 
 int main(int argc, char **argv) {
 	fstream fout;
-	fout.open("time.txt", fstream::out);
+	fout.open("time_4rooms_opt2.txt", fstream::out);
 
 	SocialForceSimApp app1;
 	app1.initSimClone();

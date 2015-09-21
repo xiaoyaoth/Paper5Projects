@@ -7,7 +7,8 @@
 #include "TestVisual2Dlg.h"
 #include "afxdialogex.h"
 
-#include "SocialForce_3.h"
+#include "SocialForce_2.h" // analyze weight with 4 * 4 room configuration
+//#include "SocialForce_3.h" // analyze weight with 4 * 4 room configuration
 
 extern "C" void runTest();
 

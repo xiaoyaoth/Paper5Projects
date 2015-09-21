@@ -127,7 +127,7 @@ inline double2 operator-(const double2& a, const double2& b)
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 512
+#define NUM_CAP 256
 #define NUM_PARAM 4
 #define NUM_STEP 500
 #define NUM_GOAL 3
@@ -231,6 +231,7 @@ public:
 	fstream fout;
 
 	SocialForceClone(int id, int pv1[NUM_PARAM]) {
+		numElem = 0;
 		cloneid = id;
 		ap = new AgentPool(NUM_CAP);
 		//agents = new SocialForceAgent[NUM_CAP];
@@ -584,7 +585,7 @@ class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
 	int paintId = 0;
-	int totalClone = 8;
+	int totalClone = 4;
 	int stepCount = 0;
 	int rootCloneId = 0;
 	int **cloneTree;
@@ -608,12 +609,12 @@ public:
 		paramWeight[3] = 3;
 
 		for (int i = 0; i < totalClone; i++) {
-			for (int i = 0; i < NUM_PARAM; i++) {
-				cloneParams[i] = 0;
+			for (int j = 0; j < NUM_PARAM; j++) {
+				cloneParams[j] = 1000;
 			}
-			if (i == 1) cloneParams[1] = 100;
-			if (i == 2) cloneParams[3] = 100;
-			if (i == 3) { cloneParams[1] = 100; cloneParams[3] = 100; }
+			if (i == 1) cloneParams[0] = 1;
+			if (i == 2) cloneParams[3] = 1;
+			if (i == 3) { cloneParams[0] = 1; cloneParams[3] = 1; }
 			if (i == 4) { cloneParams[0] = 100; }
 			if (i == 5) { cloneParams[0] = 100; cloneParams[1] = 100; }
 			if (i == 6) { cloneParams[0] = 100; cloneParams[3] = 100; }
@@ -638,7 +639,21 @@ public:
 		for (int j = 0; j < NUM_CAP; j++)
 			cAll[rootCloneId]->cloneFlag[j] = true;
 
-		mst();
+		//mst();
+		cloneTree[0] = new int[totalClone];
+		cloneTree[1] = new int[totalClone];
+
+		int i = 1;
+#define TREE_OPT 1
+#if TREE_OPT == 1
+		cloneTree[0][i] = 0, cloneTree[1][i] = 1; i++;
+		cloneTree[0][i] = 0, cloneTree[1][i] = 2; i++;
+		cloneTree[0][i] = 1, cloneTree[1][i] = 3; i++;
+#else
+		cloneTree[0][i] = 0, cloneTree[1][i] = 1; i++;
+		cloneTree[0][i] = 0, cloneTree[1][i] = 2; i++;
+		cloneTree[0][i] = 2, cloneTree[1][i] = 3; i++;
+#endif
 
 		return EXIT_SUCCESS;
 	}
@@ -829,130 +844,17 @@ public:
 		delete mstSet;
 		delete key;
 	}
-	void stepApp0(bool o) {
-		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
-		if (stepCount < 800 && o)
-			cAll[rootCloneId]->output(stepCount, "s0");
-		cAll[rootCloneId]->swap();
-	}
-	void stepApp1(bool o) {
-		stepCount++;
-
-		cAll[rootCloneId]->step(stepCount);
-		proc(0, 1, 0, "s1");
-		proc(0, 2, 0, "s1");
-		proc(0, 4, 0, "s1");
-		proc(1, 3, 0, "s1");
-		proc(1, 5, 0, "s1");
-		proc(2, 6, 0, "s1");
-		proc(3, 7, 0, "s1");
-
-		for (int j = 0; j < totalClone; j++) {
-			cAll[j]->swap();
-		}
-	}
-	void stepApp2(bool o) {
-		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
-
-		proc(0, 2, 0, "s2");
-		proc(2, 1, 0, "s2");
-		proc(2, 3, 0, "s2");
-		proc(2, 4, 0, "s2");
-		proc(2, 5, 0, "s2");
-		proc(2, 6, 0, "s2");
-		proc(2, 7, o, "s2");
-
-		for (int j = 0; j < totalClone; j++) {
-			cAll[j]->swap();
-		}
-	}
-	void stepApp3(bool o){
-		stepCount++;
-
-		cAll[rootCloneId]->step(stepCount);
-		proc(0, 1, 0, "s3");
-		proc(0, 2, 0, "s3");
-		proc(0, 4, 0, "s3");
-		proc(0, 3, 0, "s3");
-		proc(0, 5, 0, "s3");
-		proc(0, 6, 0, "s3");
-		proc(0, 7, o, "s3");
-
-		for (int j = 0; j < totalClone; j++) {
-			cAll[j]->swap();
-		}
-	}
-	void stepApp4_1(bool o) {
-		int **cloneDiff = new int*[totalClone];
-		for (int i = 0; i < totalClone; i++) {
-			cloneDiff[i] = new int[totalClone];
-			for (int j = 0; j < totalClone; j++)
-				cloneDiff[i][j] = 0;
-		}
-
-		for (int i = 0; i < totalClone; i++) {
-			for (int j = 0; j < totalClone; j++) {
-				for (int k = 0; k < NUM_PARAM; k++) {
-					if (cAll[i]->cloneParams[k] != cAll[j]->cloneParams[k])
-						cloneDiff[i][j]++;
-				}
-				wchar_t message[10];
-				swprintf_s(message, 10, L"%d ", cloneDiff[i][j]);
-				OutputDebugString(message);
-			}
-			OutputDebugString(L"\n");
-		}
-
-		for (int i = 0; i < totalClone; i++) {
-			int loc = 0;
-			int nDiff = 0;
-			for (int j = 0; j < NUM_PARAM; j++) {
-				wchar_t message[10];
-				swprintf_s(message, 10, L"%d ", cAll[i]->cloneParams[j]);
-				OutputDebugString(message);
-			}
-			OutputDebugString(L"\n");
-		}
-
-
-	}
-	void stepApp4(bool o) {
-		stepCount++;
-
-		cAll[rootCloneId]->step(stepCount);
-		proc(0, 1, 0, "s4");
-		proc(0, 2, 0, "s4");
-		proc(0, 3, 0, "s4");
-		proc(0, 5, 0, "s4");
-		proc(0, 7, 0, "s4");
-		proc(3, 4, 0, "s4");
-		proc(5, 6, o, "s4");
-
-		for (int j = 0; j < totalClone; j++) {
-			cAll[j]->swap();
-		}
-	}
+	
 	void stepApp5(bool o) {
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
 		for (int i = 1; i < totalClone; i++)
-			proc(cloneTree[0][i], i, 0, "s5");
+			proc(cloneTree[0][i], cloneTree[1][i], 0, "s5");
 		for (int j = 0; j < totalClone; j++) {
 			cAll[j]->swap();
 		}
 	}
 
-	void stepApp6(bool o) {
-		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
-		for (int i = 1; i < totalClone; i++)
-			proc(i - 1, i, 0, "s6");
-		for (int j = 0; j < totalClone; j++) {
-			cAll[j]->swap();
-		}
-	}
 	void stepApp(){
 		//stepApp1(0);
 		stepApp5(0);

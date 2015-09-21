@@ -111,6 +111,7 @@
     </ResourceCompile>
     <CudaCompile>
       <Include>./;../gsim;../common;</Include>
+      <AdditionalOptions>-Xcompiler "/wd 4819" %(AdditionalOptions)</AdditionalOptions>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>

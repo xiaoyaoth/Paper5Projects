@@ -57,8 +57,9 @@ int main()
 	}
 
 	// Parallel section
+	for (int iter = 0; iter < 10; iter++) {
 #pragma omp parallel for num_threads(n_threads)
-	
+
 		for (int i = 0; i < n_streams; i++)
 		{
 
@@ -70,6 +71,7 @@ int main()
 
 			kernel_d << <1, 1, 0, streams[i] >> >();
 		}
+	}
 	
 
 	// release all stream

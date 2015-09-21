@@ -32,11 +32,11 @@ protected:
 
 public:
 	void myDraw();
-	CDC _memDC;
 	CBitmap _memBitmap;
 	CDC *pDC;
 	int screenWidth;
 	int screenHeight;
+	int cellSize;
 	int fps;
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg void OnLButtonDblClk(UINT nFlags, CPoint point);
