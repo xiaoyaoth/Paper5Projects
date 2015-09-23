@@ -11,6 +11,7 @@
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include <curand_kernel.h>
+#include <omp.h>
 
 #define USE_GPU 1
 
@@ -147,7 +148,7 @@ namespace util {
 	}
 }
 
-#define BLOCK_SIZE 64
+#define BLOCK_SIZE 32
 #define GRID_SIZE(n) (n%BLOCK_SIZE==0 ? n/BLOCK_SIZE : n/BLOCK_SIZE + 1)
 
 /* application related constants */
@@ -158,7 +159,7 @@ namespace util {
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 256
+#define NUM_CAP 32
 #define NUM_PARAM 24
 #define NUM_STEP 100
 #define NUM_GOAL 7
@@ -259,6 +260,7 @@ public:
 	obstacleLine gates[NUM_PARAM];
 	bool takenMap[NUM_CELL * NUM_CELL];
 	SocialForceClone *selfDev;
+	cudaStream_t myStream;
 
 	uchar4 color;
 	int cloneid;
@@ -266,7 +268,9 @@ public:
 
 	fstream fout;
 
-	__host__ SocialForceClone(int id, int pv1[NUM_PARAM]) {
+	__host__ SocialForceClone() {}
+
+	__host__ void init(int id, int pv1[NUM_PARAM]) {
 		this->color.x = rand() % 256;
 		this->color.y = rand() % 256;
 		this->color.z = rand() % 256;
@@ -281,6 +285,7 @@ public:
 		cudaMemset(context, 0, sizeof(void*) * NUM_CAP);
 		cudaMemset(cloneFlags, 0, sizeof(bool) * NUM_CAP);
 		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
+		cudaStreamCreate(&myStream);
 		
 		int r1 = id > 0 ? 1 + rand() % 4 : 0;
 		for (int i = 0; i < r1; i++) {
@@ -388,7 +393,9 @@ public:
 		}
 
 		for (int i = 0; i < totalClone; i++) {
-			cAll[i] = new SocialForceClone(i, cloneParams);
+			//cAll[i] = new SocialForceClone(i, cloneParams);
+			cudaMallocHost((void**)&cAll[i], sizeof(SocialForceClone));
+			cAll[i]->init(i, cloneParams);
 		}
 
 		initRootClone(cAll[rootCloneId], cAll[rootCloneId]->selfDev);
@@ -419,9 +426,14 @@ public:
 	void stepApp(){
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
-		for (int i = 1; i < totalClone; i++)
+
+#pragma omp parallel for
+		for (int i = 1; i < totalClone; i++) {
+			printf("%d ", i);
 			proc(0, i, 0, "g1");
-		
+		}
+		//cudaDeviceSynchronize();
+		printf("\n");
 		for (int i = 0; i < totalClone; i++)
 			cAll[i]->swap();
 		cudaDeviceSynchronize();

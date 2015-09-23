@@ -39,11 +39,3 @@ int main(int argc, char* argv[]) {
 	d = test2(n);
 	printf_s("For %d steps, pi = %.15f, %d milliseconds\n", n, d, GetTickCount() - dwStart);
 }
-
-int main1()
-{
-	Solution instance;
-	instance.test();
-
-    return 0;
-}

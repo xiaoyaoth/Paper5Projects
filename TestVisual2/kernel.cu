@@ -354,7 +354,7 @@ void SocialForceClone::step(int stepCount) {
 	//OutputDebugString(message);
 
 	int gSize = GRID_SIZE(numElem);
-	clone::stepKernel << <gSize, BLOCK_SIZE >> >(selfDev, numElem);
+	clone::stepKernel << <gSize, BLOCK_SIZE, 0, myStream >> >(selfDev, numElem);
 }
 
 void SocialForceClone::swap() {
@@ -370,7 +370,7 @@ void SocialForceClone::alterGate(int stepCount) {
 		if (cloneParams[i] == stepCount) {
 			changed = true;
 			gates[i].init(0, 0, 0, 0);
-			cudaMemcpy(&selfDev->gates[i], &gates[i], sizeof(obstacleLine), cudaMemcpyHostToDevice);
+			cudaMemcpyAsync(&selfDev->gates[i], &gates[i], sizeof(obstacleLine), cudaMemcpyHostToDevice, myStream);
 		}
 	}
 }
@@ -492,29 +492,28 @@ void SocialForceSimApp::performClone(SocialForceClone *parentClone, SocialForceC
 	childClone->parentCloneid = parentClone->cloneid;
 
 	// 1. copy the context of parent clone
-	cudaMemcpy(childClone->context, parentClone->context, NUM_CAP * sizeof(SocialForceAgent*), cudaMemcpyDeviceToDevice);
+	cudaMemcpyAsync(childClone->context, parentClone->context, NUM_CAP * sizeof(SocialForceAgent*), cudaMemcpyDeviceToDevice, childClone->myStream);
 	getLastCudaError("perform clone");
 
 	// 2. update the context with agents of its own
 	if (childClone->numElem > 0) {
 		int gSize = GRID_SIZE(childClone->numElem);
-		AppUtil::updateContextKernel << <gSize, BLOCK_SIZE >> >(childClone->selfDev, childClone->numElem);
+		AppUtil::updateContextKernel << <gSize, BLOCK_SIZE, 0, childClone->myStream >> >(childClone->selfDev, childClone->numElem);
 	}
 	getLastCudaError("perform clone");
 
 	// 3. construct passive cloning map
 	if (childClone->numElem > 0) {
-		cudaMemset(childClone->selfDev->takenMap, 0, sizeof(bool) * NUM_CELL * NUM_CELL);
+		cudaMemsetAsync(childClone->selfDev->takenMap, 0, sizeof(bool) * NUM_CELL * NUM_CELL, childClone->myStream);
 		int gSize = GRID_SIZE(childClone->numElem);
-		AppUtil::constructPassiveMap << <gSize, BLOCK_SIZE >> >(childClone->selfDev, childClone->numElem);
+		AppUtil::constructPassiveMap << <gSize, BLOCK_SIZE, 0, childClone->myStream >> >(childClone->selfDev, childClone->numElem);
 	}
 	getLastCudaError("perform clone");
 
 	// 4. perform active and passive cloning (in cloningCondition checking)
 	int gSize = GRID_SIZE(NUM_CAP);
-	AppUtil::performCloningKernel<<<gSize, BLOCK_SIZE>>>(parentClone->selfDev, childClone->selfDev, NUM_CAP);
-	cudaDeviceSynchronize();
-	cudaMemcpy(childClone, childClone->selfDev, sizeof(SocialForceClone), cudaMemcpyDeviceToHost);
+	AppUtil::performCloningKernel << <gSize, BLOCK_SIZE, 0, childClone->myStream >> >(parentClone->selfDev, childClone->selfDev, NUM_CAP);
+	cudaMemcpyAsync(childClone, childClone->selfDev, sizeof(SocialForceClone), cudaMemcpyDeviceToHost, childClone->myStream);
 	/*for (int i = 0; i < NUM_CAP; i++) {
 		SocialForceAgent *agent = parentClone->context[i];
 		if (cloningCondition(agent, childClone->takenMap, parentClone, childClone)) {
@@ -554,10 +553,10 @@ void compareAndEliminateCPU(SocialForceClone *parentClone, SocialForceClone *chi
 void SocialForceSimApp::compareAndEliminate(SocialForceClone *parentClone, SocialForceClone *childClone) {
 	if (childClone->numElem == 0) return;
 	int gSize = GRID_SIZE(childClone->numElem);
-	AppUtil::compareAndEliminateKernel << <gSize, BLOCK_SIZE >> >(parentClone->selfDev, childClone->selfDev, childClone->numElem);
+	AppUtil::compareAndEliminateKernel << <gSize, BLOCK_SIZE, 0, childClone->myStream >> >(parentClone->selfDev, childClone->selfDev, childClone->numElem);
 	gSize = GRID_SIZE(NUM_CAP);
-	AppUtil::reorderKernel << <1, 1 >> >(childClone->selfDev, childClone->numElem);
-	cudaMemcpy(childClone, childClone->selfDev, sizeof(SocialForceClone), cudaMemcpyDeviceToHost);
+	AppUtil::reorderKernel << <1, 1, 0, childClone->myStream >> >(childClone->selfDev, childClone->numElem);
+	cudaMemcpyAsync(childClone, childClone->selfDev, sizeof(SocialForceClone), cudaMemcpyDeviceToHost, childClone->myStream);
 	//wchar_t message[20];
 	//swprintf_s(message, 20, L"numElem: %d\n", childClone->numElem);
 	//OutputDebugString(message);

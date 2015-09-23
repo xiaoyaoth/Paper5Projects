@@ -1,4 +1,4 @@
-#include "../TestVisual2/SocialForce_2.h"
+#include "../TestVisual2/SocialForceGPU.h"
 #include <iostream>
 
 using namespace std;
