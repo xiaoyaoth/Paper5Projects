@@ -131,7 +131,7 @@ int g_stepCount = 0;
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 64
+#define NUM_CAP 512
 #define NUM_PARAM 8
 #define NUM_STEP 500
 #define NUM_GOAL 3
@@ -218,8 +218,8 @@ public:
 };
 
 namespace NeighborModule {
-	int zcode(int x, int y)
-	{
+	int zcode(int x, int y) {
+		return x * NUM_CELL + y;
 		x &= 0x0000ffff;					// x = ---- ---- ---- ---- fedc ba98 7654 3210
 		y &= 0x0000ffff;					// x = ---- ---- ---- ---- fedc ba98 7654 3210
 		x = (x ^ (x << 8)) & 0x00ff00ff; // x = ---- ---- fedc ba98 ---- ---- 7654 3210
@@ -239,16 +239,14 @@ namespace NeighborModule {
 		return zcode(ix, iy);
 	}
 
+	int zcode(SocialForceAgent *agent) {
+		return zcode(agent->data.loc);
+	}
+
 	void swap(SocialForceAgent** agentPtrs, int a, int b) {
 		SocialForceAgent* temp = agentPtrs[a];
 		agentPtrs[a] = agentPtrs[b];
 		agentPtrs[b] = temp;
-	}
-
-	int agCellId(SocialForceAgent *agent) {
-		int ix = agent->data.loc.x / (ENV_DIM / NUM_CELL);
-		int iy = agent->data.loc.y / (ENV_DIM / NUM_CELL);
-		return zcode(ix, iy);
 	}
 
 	void quickSortByAgentLoc(SocialForceAgent** agentPtrs, int l, int r) {
@@ -260,7 +258,7 @@ namespace NeighborModule {
 
 		int i = l + 1, j = l + 1;
 		for (; j < r; j++) {
-			if (agCellId(agentPtrs[j]) < agCellId(pivot)) {
+			if (zcode(agentPtrs[j]) < zcode(pivot)) {
 				swap(agentPtrs, i, j);
 				i++;
 			}
@@ -268,6 +266,22 @@ namespace NeighborModule {
 		swap(agentPtrs, l, i - 1);
 		quickSortByAgentLoc(agentPtrs, l, i - 1);
 		quickSortByAgentLoc(agentPtrs, i, r);
+	}
+
+	void setCidStartEnd(SocialForceAgent** contextSorted, int* &cidStarts, int* &cidEnds, int n) {
+		memset(cidStarts, 0xff, sizeof(int) * NUM_CELL * NUM_CELL);
+		memset(cidEnds, 0xff, sizeof(int) * NUM_CELL * NUM_CELL);
+		int prevCid = zcode(contextSorted[0]->data.loc);
+		cidStarts[prevCid] = 0;
+		for (int i = 1; i < n; i++) {
+			int cid = zcode(contextSorted[i]->data.loc);
+			if (cid != prevCid) {
+				cidStarts[cid] = i;
+				cidEnds[prevCid] = i;
+				prevCid = cid;
+			}
+		}
+		cidEnds[prevCid] = n;
 	}
 }
 
@@ -277,6 +291,7 @@ public:
 	int numElem;
 	SocialForceAgent **context;
 	SocialForceAgent **contextSorted;
+	int *cidStarts, *cidEnds;
 	bool *cloneFlag;
 	int cloneParams[NUM_PARAM];
 	obstacleLine walls[NUM_WALLS];
@@ -296,6 +311,8 @@ public:
 		//agents = new SocialForceAgent[NUM_CAP];
 		context = new SocialForceAgent*[NUM_CAP];
 		contextSorted = new SocialForceAgent*[NUM_CAP];
+		cidStarts = new int[NUM_CELL * NUM_CELL];
+		cidEnds = new int[NUM_CELL * NUM_CELL];
 		cloneFlag = new bool[NUM_CAP];
 		memset(context, 0, sizeof(void*) * NUM_CAP);
 		memset(contextSorted, 0, sizeof(void*) * NUM_CAP);
@@ -490,27 +507,32 @@ void SocialForceAgent::computeSocialForceRoom(SocialForceAgentData &dataLocal, d
 	double ds = 0;
 
 	int neighborCount = 0;
-	wchar_t message[128];
+	int cxmin = (dataLocal.loc.x - RADIUS_I) / (ENV_DIM / NUM_CELL);
+	int cxmax = (dataLocal.loc.x + RADIUS_I) / (ENV_DIM / NUM_CELL);
+	int cymin = (dataLocal.loc.y - RADIUS_I) / (ENV_DIM / NUM_CELL);
+	int cymax = (dataLocal.loc.y + RADIUS_I) / (ENV_DIM / NUM_CELL);
+	cxmin = max(cxmin, 0); 
+	cymin = max(cymin, 0);
+	cxmax = min(cxmax, NUM_CELL - 1);
+	cymax = min(cymax, NUM_CELL - 1);
 
-	int cxmin = (dataLocal.loc.x - RADIUS_I) / NUM_CELL;
-	int cxmax = (dataLocal.loc.x + RADIUS_I) / NUM_CELL;
-	int cymin = (dataLocal.loc.y - RADIUS_I) / NUM_CELL;
-	int cymax = (dataLocal.loc.y + RADIUS_I) / NUM_CELL;
-
-	for (int i = 0; i < NUM_CAP; i++) {
-		SocialForceAgent *other = myClone->context[i];
-		SocialForceAgentData otherData = other->data;
-		ds = length(otherData.loc - dataLocal.loc);
-		if (contextId == 10 && g_stepCount == 70 && this->myClone->cloneid == 1) {
-			swprintf_s(message, 128, L"%d: %.4f, %.4f, %.4f\n", 
-				other->contextId, otherData.loc.x, otherData.loc.y, ds);
-			OutputDebugString(message);
-		}
-		if (ds < 6 && ds > 0) {
-			neighborCount++;
-			computeIndivSocialForceRoom(dataLocal, otherData, fSum);
+	for (int ix = cxmin; ix <= cxmax; ix++) {
+		for (int iy = cymin; iy <= cymax; iy++) {
+			int cid = NeighborModule::zcode(ix, iy);
+			int cidStart = myClone->cidStarts[cid];
+			int cidEnd = myClone->cidEnds[cid];
+			for (int i = cidStart; i < cidEnd; i++) {
+				SocialForceAgent *other = myClone->contextSorted[i];
+				SocialForceAgentData otherData = other->data;
+				ds = length(otherData.loc - dataLocal.loc);
+				if (ds < 6 && ds > 0) {
+					neighborCount++;
+					computeIndivSocialForceRoom(dataLocal, otherData, fSum);
+				}
+			}
 		}
 	}
+
 	dataLocal.numNeighbor = neighborCount;
 }
 void SocialForceAgent::chooseNewGoal(const double2 &newLoc, double epsilon, double2 &newGoal) {
@@ -606,11 +628,11 @@ void SocialForceAgent::init(int idx) {
 
 	SocialForceAgentData & dataLocal = this->data; //= &sfModel->originalAgents->dataArray[dataSlot];
 	dataLocal.agentPtr = this;
-	//dataLocal.loc.x = ENV_DIM * 0.0 + (float)rand() / (float)RAND_MAX * ENV_DIM * 0.7;
-	//dataLocal.loc.y = ENV_DIM * 0.0 + (float)rand() / (float)RAND_MAX * ENV_DIM;
-	int rx = contextId / 8;
-	int ry = contextId % 8;
-	dataLocal.loc = make_double2(rx * 8 + 4, ry * 8 + 4);
+	dataLocal.loc.x = ENV_DIM * 0.0 + (float)rand() / (float)RAND_MAX * ENV_DIM;
+	dataLocal.loc.y = ENV_DIM * 0.0 + (float)rand() / (float)RAND_MAX * ENV_DIM;
+	//int rx = contextId / 8;
+	//int ry = contextId % 8;
+	//dataLocal.loc = make_double2(rx * 8 + 4, ry * 8 + 4);
 
 	dataLocal.velocity.x = 2;//4 * (this->random->uniform()-0.5);
 	dataLocal.velocity.y = 2;//4 * (this->random->uniform()-0.5);
@@ -619,10 +641,10 @@ void SocialForceAgent::init(int idx) {
 	dataLocal.mass = 50;
 	dataLocal.numNeighbor = 0;
 	//dataLocal.goal = make_double2((float)rand() / (float)RAND_MAX * ENV_DIM, (float)rand() / (float)RAND_MAX * ENV_DIM);
-	if (rx < 4)
-		dataLocal.goal = make_double2(64, 32);
+	if (dataLocal.loc.x < ENV_DIM / 2)
+		dataLocal.goal = make_double2(ENV_DIM, ENV_DIM / 2);
 	else
-		dataLocal.goal = make_double2(0, 32);
+		dataLocal.goal = make_double2(0, ENV_DIM / 2);
 	//chooseNewGoal(dataLocal.loc, 0, dataLocal.goal);	
 	this->dataCopy = dataLocal;
 }
@@ -642,12 +664,18 @@ void SocialForceClone::step(int stepCount) {
 	//alterGate(stepCount);
 	memcpy(contextSorted, context, sizeof(SocialForceAgent*) * NUM_CAP);
 	NeighborModule::quickSortByAgentLoc(contextSorted, 0, NUM_CAP);
-	wchar_t message[128];
-	for (int i = 0; i < NUM_CAP; i++) {
-		swprintf_s(message, L"%d ", NeighborModule::zcode(contextSorted[i]->data.loc));
-		OutputDebugString(message);
-	}
-	OutputDebugString(L"\n");
+	//wchar_t message[128];
+	//for (int i = 0; i < NUM_CAP; i++) {
+	//	swprintf_s(message, L"%d ", NeighborModule::zcode(contextSorted[i]->data.loc));
+	//	OutputDebugString(message);
+	//}
+	//OutputDebugString(L"\n");
+	NeighborModule::setCidStartEnd(contextSorted, cidStarts, cidEnds, NUM_CAP);
+	//for (int i = 0; i < NUM_CELL * NUM_CELL; i++) {
+	//	swprintf_s(message, L"[%d, %d] ", cidStarts[i], cidEnds[i]);
+	//	OutputDebugString(message);
+	//}
+	//OutputDebugString(L"\n");
 	for (int i = 0; i < numElem; i++)
 		ap->agentPtrArray[i]->step();
 }
@@ -922,6 +950,6 @@ public:
 			cAll[i]->swap();
 	}
 	void stepApp(){
-		stepApp0(1);
+		stepApp0(0);
 	}
 };
