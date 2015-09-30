@@ -10,7 +10,7 @@
 //#include "SocialForce_2.h" // analyze weight with 4 * 4 room configuration
 //#include "SocialForce_3.h" // analyze weight with 4 * 4 room configuration
 //#include "SocialForceGPU.h"
-#include "SocialForce_5.h"
+#include "SocialForce_6.h"
 
 extern "C" void runTest();
 
