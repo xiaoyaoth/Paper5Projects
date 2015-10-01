@@ -292,50 +292,23 @@ __device__ void SocialForceAgent::computeSocialForceRoom(SocialForceAgentData &d
 	dataLocal.numNeighbor = neighborCount;
 }
 __device__ void SocialForceAgent::chooseNewGoal(const double2 &newLoc, double epsilon, double2 &newGoal) {
-	double2 oldGoal = newGoal;
-	double2 center = make_double2(ENV_DIM / 2, ENV_DIM / 2);
-	if (newLoc.x < center.x && newLoc.y < center.y) {
-		if ((newLoc.x + epsilon >= 0.5 * ENV_DIM)
-			//&& (newLoc.y + epsilon > 0.3 * modelDevParams.HEIGHT - gateSize) 
-			//&& (newLoc.y - epsilon < 0.3 * modelDevParams.HEIGHT + gateSize)
-			)
-		{
-			newGoal.x = 0.9 * ENV_DIM;
-			newGoal.y = 0.3 * ENV_DIM;
-		}
+	double2 g1 = goalSeq[goalIdx];
+	double2 g2 = goalSeq[goalIdx + 1];
+
+	int x = (int)g1.x % (int)(ENV_DIM / 4);
+	int y = (int)g1.y % (int)(ENV_DIM / 4);
+
+
+	if (x > y && newLoc.y >= g1.y) {
+		newGoal = g2;
+		goalIdx++;
 	}
-	else if (newLoc.x > center.x && newLoc.y < center.y) {
-		if ((newLoc.x + epsilon >= 0.9 * ENV_DIM)
-			//&& (newLoc.y + epsilon > 0.3 * modelDevParams.HEIGHT - gateSize) 
-			//&& (newLoc.y - epsilon < 0.3 * modelDevParams.HEIGHT + gateSize)
-			)
-		{
-			//newGoal.x = modelDevParams.WIDTH;
-			//newGoal.y = 0;
-		}
-	}
-	else if (newLoc.x < center.x && newLoc.y > center.y) {
-		if ((newLoc.y - epsilon <= 0.5 * ENV_DIM)
-			//&& (newLoc.x + epsilon > 0.3 * modelDevParams.WIDTH - gateSize) 
-			//&& (newLoc.x - epsilon < 0.3 * modelDevParams.WIDTH + gateSize)
-			)
-		{
-			newGoal.x = 0.5 * ENV_DIM;
-			newGoal.y = 0.3 * ENV_DIM;
-		}
-	}
-	else if (newLoc.x > center.x && newLoc.y > center.y) {
-		if ((newLoc.x - epsilon <= 0.5 * ENV_DIM)
-			//&& (newLoc.y + epsilon > 0.7 * modelDevParams.WIDTH - gateSize) 
-			//&& (newLoc.y - epsilon < 0.7 * modelDevParams.WIDTH + gateSize)
-			)
-		{
-			newGoal.x = 0.3 * ENV_DIM;
-			newGoal.y = 0.5 * ENV_DIM;
-		}
+
+	if (x < y && newLoc.x >= g1.x) {
+		newGoal = g2;
+		goalIdx++;
 	}
 }
-
 __device__ void SocialForceAgent::step(){
 	double cMass = 100;
 
@@ -357,6 +330,10 @@ __device__ void SocialForceAgent::step(){
 	for (int i = 0; i < NUM_WALLS; i++) {
 		obstacleLine wall = myClone->walls[i];
 		computeForceWithWall(data, wall, cMass, fSum);
+	}
+	for (int i = 0; i < NUM_PARAM; i++) {
+		obstacleLine gate = myClone->gates[i];
+		computeForceWithWall(data, gate, cMass, fSum);
 	}
 
 	//sum up
@@ -381,6 +358,10 @@ __device__ void SocialForceAgent::step(){
 	for (int i = 0; i < NUM_WALLS; i++) {
 		obstacleLine wall = myClone->walls[i];
 		computeWallImpaction(data, wall, newVelo, tick, mint);
+	}
+	for (int i = 0; i < NUM_PARAM; i++) {
+		obstacleLine gate = myClone->gates[i];
+		computeWallImpaction(data, gate, newVelo, tick, mint);
 	}
 
 	newVelo.x *= mint;
@@ -416,8 +397,8 @@ __device__ void SocialForceAgent::init(SocialForceClone* c, int idx) {
 	SocialForceAgentData & dataLocal = this->data; //= &sfModel->originalAgents->dataArray[dataSlot];
 	float rx = (float)(idx / 32) / (float)32;
 	float ry = (float)(idx % 32) / (float)32;
-	dataLocal.loc.x = (0.5 + 0.4 * curand_uniform(&rStateLocal)) * ENV_DIM;
-	dataLocal.loc.y = (0.5 + 0.4 * curand_uniform(&rStateLocal)) * ENV_DIM;
+	dataLocal.loc.x = ENV_DIM * 0.0 + curand_uniform(&rStateLocal) * ENV_DIM;
+	dataLocal.loc.y = ENV_DIM * 0.0 + curand_uniform(&rStateLocal) * ENV_DIM;
 
 	dataLocal.velocity.x = 2;//4 * (this->random->uniform()-0.5);
 	dataLocal.velocity.y = 2;//4 * (this->random->uniform()-0.5);
@@ -425,8 +406,31 @@ __device__ void SocialForceAgent::init(SocialForceClone* c, int idx) {
 	dataLocal.v0 = 2;
 	dataLocal.mass = 50;
 	dataLocal.numNeighbor = 0;
+	//chooseNewGoal(dataLocal.loc, 0, dataLocal.goal);
 
-	dataLocal.goal = make_double2(0.5 * ENV_DIM, 0.7 * ENV_DIM);
+	int ix = dataLocal.loc.x / (0.25 * ENV_DIM);
+	int iy = dataLocal.loc.y / (0.25 * ENV_DIM);
+
+	this->goalSeq[NUM_GOAL - 1] = make_double2(ENV_DIM, ENV_DIM);
+	for (int i = 0; i < NUM_GOAL - 1; i++) {
+		this->goalSeq[i] = make_double2(ENV_DIM, ENV_DIM);
+		float r = curand_uniform(&rStateLocal);
+
+		if (ix < 3) {
+			if (iy < 3 && r < 0.5) {
+				this->goalSeq[i] = make_double2((ix * 0.25 + 0.125) * ENV_DIM, (++iy) * 0.25 * ENV_DIM);
+			}
+			else {
+				this->goalSeq[i] = make_double2((++ix) * 0.25 * ENV_DIM, (iy * 0.25 + 0.125) * ENV_DIM);
+			}
+		}
+		else if (iy < 3) {
+			this->goalSeq[i] = make_double2((ix * 0.25 + 0.125) * ENV_DIM, (++iy) * 0.25 * ENV_DIM);
+		}
+	}
+
+	c->rState[idx] = rStateLocal;
+	dataLocal.goal = this->goalSeq[goalIdx];
 	this->dataCopy = dataLocal;
 }
 
@@ -464,7 +468,7 @@ void SocialForceClone::step(int stepCount) {
 		return;
 	int gSize;
 
-	//alterGate(stepCount);
+	alterGate(stepCount);
 	cudaMemcpyAsync(contextSorted, context, sizeof(SocialForceAgent*) * NUM_CAP, cudaMemcpyDeviceToDevice, myStream);
 	NeighborModule::sortAgentByLocKernel << <1, 1, 0, myStream >> >(this->contextSorted, this->rState, NUM_CAP);
 	cudaMemsetAsync(cidStarts, 0xff, sizeof(int) * NUM_CELL * NUM_CELL, myStream);
@@ -489,8 +493,8 @@ void SocialForceClone::alterGate(int stepCount) {
 	for (int i = 0; i < NUM_PARAM; i++) {
 		if (cloneParams[i] == stepCount) {
 			changed = true;
-			//gates[i].init(0, 0, 0, 0);
-			//cudaMemcpyAsync(&selfDev->gates[i], &gates[i], sizeof(obstacleLine), cudaMemcpyHostToDevice, myStream);
+			gates[i].init(0, 0, 0, 0);
+			cudaMemcpyAsync(&selfDev->gates[i], &gates[i], sizeof(obstacleLine), cudaMemcpyHostToDevice, myStream);
 		}
 	}
 }
@@ -512,9 +516,9 @@ namespace AppUtil {
 			if (param1 != param2) {
 				obstacleLine g1 = parentClone->gates[i];
 				obstacleLine g2 = childClone->gates[i];
-				if (g1.pointToLineDist(loc) < 6)
-					return true;
-				if (g2.pointToLineDist(loc) < 6)
+				obstacleLine g0 = obstacleLine(0, 0, 0, 0);
+				obstacleLine gate = (g1 != g0) ? g1 : g2;
+				if (gate.pointToLineDist(loc) < 6)
 					return true;
 			}
 		}
@@ -524,10 +528,10 @@ namespace AppUtil {
 #define MY_MIN(a, b) (a < b ? a : b)
 		int minx = MY_MAX((loc.x - RADIUS_I) / CELL_DIM, 0);
 		int miny = MY_MAX((loc.y - RADIUS_I) / CELL_DIM, 0);
-		int maxx = MY_MIN((loc.x + RADIUS_I) / CELL_DIM, NUM_CELL);
-		int maxy = MY_MIN((loc.y + RADIUS_I) / CELL_DIM, NUM_CELL);
-		for (int i = minx; i < maxx; i++)
-			for (int j = miny; j < maxy; j++)
+		int maxx = MY_MIN((loc.x + RADIUS_I) / CELL_DIM, NUM_CELL - 1);
+		int maxy = MY_MIN((loc.y + RADIUS_I) / CELL_DIM, NUM_CELL - 1);
+		for (int i = minx; i <= maxx; i++)
+			for (int j = miny; j <= maxy; j++)
 				if (childClone->takenMap[i * NUM_CELL + j])
 					return true;
 
@@ -576,7 +580,7 @@ namespace AppUtil {
 			SocialForceAgent &parentAgent = *p->context[childAgent.contextId]; // *(SocialForceAgent*)childAgent.myOrigin;
 			double velDiff = length(childAgent.dataCopy.velocity - parentAgent.dataCopy.velocity);
 			double locDiff = length(childAgent.dataCopy.loc - parentAgent.dataCopy.loc);
-			if (locDiff == 0 && velDiff	== 0) {
+			if (locDiff < 0.01 && velDiff	< 0.01) {
 				c->ap->takenFlags[idx] = false;
 				c->cloneFlags[childAgent.contextId] = false;
 			}

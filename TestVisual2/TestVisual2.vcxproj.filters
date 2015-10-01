@@ -63,6 +63,9 @@
     <ClInclude Include="SocialForce_6.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="SocialForceGPU_2.h">
+      <Filter>GPU Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="TestVisual2.cpp">
@@ -92,6 +95,9 @@
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="kernel.cu">
+      <Filter>GPU Files</Filter>
+    </CudaCompile>
+    <CudaCompile Include="kernel_2.cu">
       <Filter>GPU Files</Filter>
     </CudaCompile>
   </ItemGroup>

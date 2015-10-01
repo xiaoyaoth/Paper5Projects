@@ -131,13 +131,13 @@ int g_stepCount = 0;
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 512
+#define NUM_CAP 256
 #define NUM_PARAM 8
 #define NUM_STEP 500
 #define NUM_GOAL 3
-#define ENV_DIM 64
-#define NUM_CELL 16
-#define CELL_DIM 4
+#define ENV_DIM 128
+#define NUM_CELL 8
+#define CELL_DIM 16
 #define RADIUS_I 6
 
 #define NUM_WALLS 1
