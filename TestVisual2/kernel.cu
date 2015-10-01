@@ -6,6 +6,84 @@ __global__ void testFunc() {
 
 }
 
+namespace NeighborModule {
+	__device__ int zcode(int x, int y) {
+		//return x * NUM_CELL + y;
+		x &= 0x0000ffff;					// x = ---- ---- ---- ---- fedc ba98 7654 3210
+		y &= 0x0000ffff;					// x = ---- ---- ---- ---- fedc ba98 7654 3210
+		x = (x ^ (x << 8)) & 0x00ff00ff; // x = ---- ---- fedc ba98 ---- ---- 7654 3210
+		y = (y ^ (y << 8)) & 0x00ff00ff; // x = ---- ---- fedc ba98 ---- ---- 7654 3210
+		y = (y ^ (y << 4)) & 0x0f0f0f0f; // x = ---- fedc ---- ba98 ---- 7654 ---- 3210
+		x = (x ^ (x << 4)) & 0x0f0f0f0f; // x = ---- fedc ---- ba98 ---- 7654 ---- 3210
+		y = (y ^ (y << 2)) & 0x33333333; // x = --fe --dc --ba --98 --76 --54 --32 --10
+		x = (x ^ (x << 2)) & 0x33333333; // x = --fe --dc --ba --98 --76 --54 --32 --10
+		y = (y ^ (y << 1)) & 0x55555555; // x = -f-e -d-c -b-a -9-8 -7-6 -5-4 -3-2 -1-0
+		x = (x ^ (x << 1)) & 0x55555555; // x = -f-e -d-c -b-a -9-8 -7-6 -5-4 -3-2 -1-0
+		return x | (y << 1);
+	}
+
+	__device__ int zcode(const double2 &loc) {
+		int ix = loc.x / (ENV_DIM / NUM_CELL);
+		int iy = loc.y / (ENV_DIM / NUM_CELL);
+		return zcode(ix, iy);
+	}
+
+	__device__ int zcode(SocialForceAgent *agent) {
+		return zcode(agent->data.loc);
+	}
+
+	__device__ void swap(SocialForceAgent** agentPtrs, int a, int b) {
+		SocialForceAgent* temp = agentPtrs[a];
+		agentPtrs[a] = agentPtrs[b];
+		agentPtrs[b] = temp;
+	}
+
+	__device__ void quickSortByAgentLoc(SocialForceAgent** agentPtrs, curandState &rState, int l, int r) {
+		if (l == r)
+			return;
+		int pi = l + curand(&rState) % (r - l);
+		swap(agentPtrs, l, pi);
+		SocialForceAgent* pivot = agentPtrs[l];
+
+		int i = l + 1, j = l + 1;
+		for (; j < r; j++) {
+			if (zcode(agentPtrs[j]) < zcode(pivot)) {
+				swap(agentPtrs, i, j);
+				i++;
+			}
+		}
+		swap(agentPtrs, l, i - 1);
+		quickSortByAgentLoc(agentPtrs, rState, l, i - 1);
+		quickSortByAgentLoc(agentPtrs, rState, i, r);
+	}
+
+	__global__ void sortAgentByLocKernel(SocialForceAgent** agentPtrsToSort, curandState *rState, int numCap) {
+		int idx = threadIdx.x + blockIdx.x * blockDim.x;
+		curandState &rStateLocal = *rState;
+		if (idx == 0)
+			quickSortByAgentLoc(agentPtrsToSort, rStateLocal, 0, numCap);
+	}
+
+	__global__ void setCidStartEndKernel(SocialForceAgent** contextSorted, int* cidStarts, int* cidEnds, int numCap) {
+		const int idx = threadIdx.x + blockIdx.x * blockDim.x;
+		if (idx < numCap && idx > 0) {
+			int cid = zcode(contextSorted[idx]);
+			int cidPrev = zcode(contextSorted[idx - 1]);
+			if (cid != cidPrev) {
+				cidStarts[cid] = idx;
+				cidEnds[cidPrev] = idx;
+			}
+		}
+		if (idx == 0) {
+			int cid = zcode(contextSorted[0]);
+			cidStarts[cid] = 0;
+
+			cid = zcode(contextSorted[numCap - 1]);
+			cidEnds[cid] = numCap;
+		}
+	}
+}
+
 extern "C"
 void runTest() {
 	testFunc << <32, 32 >> >();
@@ -149,21 +227,67 @@ __device__ void SocialForceAgent::computeDirection(const SocialForceAgentData &d
 	dvt.x = (diff.x - velo.x) / tao;
 	dvt.y = (diff.y - velo.y) / tao;
 }
+
+__device__ int sharedMinAndMax(int value, bool minFlag) {
+	for (int i = 16; i >= 1; i /= 2) {
+		if (minFlag)
+			value = min(value, __shfl_xor(value, i, 32));
+		else
+			value = max(value, __shfl_xor(value, i, 32));
+	}
+	return value;
+}
+
 __device__ void SocialForceAgent::computeSocialForceRoom(SocialForceAgentData &dataLocal, double2 &fSum) {
+	__shared__ SocialForceAgentData sdata[BLOCK_SIZE];
 	fSum.x = 0; fSum.y = 0;
 	double ds = 0;
 
 	int neighborCount = 0;
 
-	for (int i = 0; i < NUM_CAP; i++) {
-		SocialForceAgent *other = myClone->context[i];
-		SocialForceAgentData otherData = other->data;
-		ds = length(otherData.loc - dataLocal.loc);
-		if (ds < 6 && ds > 0) {
-			neighborCount++;
-			computeIndivSocialForceRoom(dataLocal, otherData, fSum);
+	int cxmin = (dataLocal.loc.x - RADIUS_I) / (ENV_DIM / NUM_CELL);
+	int cxmax = (dataLocal.loc.x + RADIUS_I) / (ENV_DIM / NUM_CELL);
+	int cymin = (dataLocal.loc.y - RADIUS_I) / (ENV_DIM / NUM_CELL);
+	int cymax = (dataLocal.loc.y + RADIUS_I) / (ENV_DIM / NUM_CELL);
+	cxmin = max(cxmin, 0);
+	cymin = max(cymin, 0);
+	cxmax = min(cxmax, NUM_CELL - 1);
+	cymax = min(cymax, NUM_CELL - 1);
+
+	cxmin = sharedMinAndMax(cxmin, true);
+	cxmax = sharedMinAndMax(cxmax, false);
+	cymin = sharedMinAndMax(cymin, true);
+	cymax = sharedMinAndMax(cymax, false);
+
+	int ptrInSmem = 0;
+
+	for (int ix = cxmin; ix <= cxmax; ix++) {
+		for (int iy = cymin; iy <= cymax; iy++) {
+			int cid = NeighborModule::zcode(ix, iy);
+			int cidStart = myClone->cidStarts[cid];
+			int cidEnd = myClone->cidEnds[cid];
+
+			for (int i = cidStart; i < cidEnd; i++) {
+				SocialForceAgent *other = myClone->contextSorted[i];
+				SocialForceAgentData otherData = other->data;
+				ds = length(otherData.loc - dataLocal.loc);
+				if (ds < 6 && ds > 0) {
+					neighborCount++;
+					computeIndivSocialForceRoom(dataLocal, otherData, fSum);
+				}
+			}
 		}
 	}
+
+	//for (int i = 0; i < NUM_CAP; i++) {
+	//	SocialForceAgent *other = myClone->context[i];
+	//	SocialForceAgentData otherData = other->data;
+	//	ds = length(otherData.loc - dataLocal.loc);
+	//	if (ds < 6 && ds > 0) {
+	//		neighborCount++;
+	//		computeIndivSocialForceRoom(dataLocal, otherData, fSum);
+	//	}
+	//}
 	dataLocal.numNeighbor = neighborCount;
 }
 __device__ void SocialForceAgent::chooseNewGoal(const double2 &newLoc, double epsilon, double2 &newGoal) {
@@ -339,21 +463,20 @@ namespace clone {
 }
 
 void SocialForceClone::step(int stepCount) {
-	alterGate(stepCount);
 	if (numElem == 0)
 		return;
-	
-	//int tempNum = stepCount / 4;
-	//tempNum++;
-	//tempNum *= 4;
-	//if (tempNum > numElem)
-	//	return;
-	//int gSize = GRID_SIZE(tempNum);
-	//wchar_t message[20];
-	//swprintf_s(message, 20, L"tempNum: %d\n", tempNum);
-	//OutputDebugString(message);
+	int gSize;
 
-	int gSize = GRID_SIZE(numElem);
+	alterGate(stepCount);
+	cudaMemcpyAsync(contextSorted, context, sizeof(SocialForceAgent*) * NUM_CAP, cudaMemcpyDeviceToDevice, myStream);
+	NeighborModule::sortAgentByLocKernel << <1, 1, 0, myStream >> >(this->contextSorted, this->rState, NUM_CAP);
+	cudaMemsetAsync(cidStarts, 0xff, sizeof(int) * NUM_CELL * NUM_CELL, myStream);
+	cudaMemsetAsync(cidEnds, 0xff, sizeof(int) * NUM_CELL * NUM_CELL, myStream);
+	gSize = GRID_SIZE(NUM_CAP);
+	NeighborModule::setCidStartEndKernel<<<gSize, BLOCK_SIZE, 0, myStream>>>(contextSorted, cidStarts, cidEnds, NUM_CAP);
+	
+	gSize = GRID_SIZE(numElem);
+	NeighborModule::sortAgentByLocKernel << <1, 1, 0, myStream >> >(this->apHost->agentPtrArray, this->rState, this->numElem);
 	clone::stepKernel << <gSize, BLOCK_SIZE, 0, myStream >> >(selfDev, numElem);
 }
 
@@ -676,6 +799,14 @@ void SocialForceSimApp::getLocAndColorFromDevice(){
 	cudaMemcpy(debugLocHost, debugLocDev, sizeof(double2) * NUM_CAP, cudaMemcpyDeviceToHost);
 	cudaMemcpy(debugColorHost, debugColorDev, sizeof(uchar4) * NUM_CAP, cudaMemcpyDeviceToHost);
 	cudaMemcpy(c->takenMap, c->selfDev->takenMap, sizeof(bool) * NUM_CELL * NUM_CELL, cudaMemcpyDeviceToHost);
+	//cudaMemcpy(debugCidStartsHost, c->cidStarts, sizeof(int) * NUM_CELL * NUM_CELL, cudaMemcpyDeviceToHost);
+	//cudaMemcpy(debugCidEndsHost, c->cidEnds, sizeof(int) * NUM_CELL * NUM_CELL, cudaMemcpyDeviceToHost);
+	//wchar_t message[128];
+	//for (int i = 0; i < NUM_CELL * NUM_CELL; i++) {
+	//	swprintf_s(message, L"(%d, %d) ", debugCidStartsHost[i], debugCidEndsHost[i]);
+	//	OutputDebugString(message);
+	//}
+	//OutputDebugString(L"\n");
 }
 
 __global__ void initRandomKernel(SocialForceClone* c, int numElemLocal) {

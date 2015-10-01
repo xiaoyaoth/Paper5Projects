@@ -159,13 +159,13 @@ namespace util {
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 32
+#define NUM_CAP 512
 #define NUM_PARAM 24
 #define NUM_STEP 100
 #define NUM_GOAL 7
-#define ENV_DIM 128
+#define ENV_DIM 64
 #define NUM_CELL 16
-#define CELL_DIM 8
+#define CELL_DIM 4
 #define RADIUS_I 6
 
 #define NUM_WALLS 30
@@ -254,6 +254,8 @@ public:
 	curandState *rState;
 	AgentPool *ap, *apHost;
 	SocialForceAgent **context;
+	SocialForceAgent **contextSorted;
+	int *cidStarts, *cidEnds;
 	bool *cloneFlags;
 	int cloneParams[NUM_PARAM];
 	obstacleLine walls[NUM_WALLS];
@@ -281,7 +283,10 @@ public:
 		util::hostAllocCopyToDevice(apHost, &ap);
 		cudaMalloc((void**)&rState, sizeof(curandState) * NUM_CAP);
 		cudaMalloc((void**)&context, sizeof(SocialForceAgent*) * NUM_CAP);
+		cudaMalloc((void**)&contextSorted, sizeof(SocialForceAgent*) * NUM_CAP);
 		cudaMalloc((void**)&cloneFlags, sizeof(bool) * NUM_CAP);
+		cudaMalloc((void**)&cidStarts, sizeof(int) * NUM_CELL * NUM_CELL);
+		cudaMalloc((void**)&cidEnds, sizeof(int) * NUM_CELL * NUM_CELL);
 		cudaMemset(context, 0, sizeof(void*) * NUM_CAP);
 		cudaMemset(cloneFlags, 0, sizeof(bool) * NUM_CAP);
 		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
@@ -358,14 +363,16 @@ public:
 class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
-	int paintId = 1;
-	int totalClone = 16;
+	int paintId = 0;
+	int totalClone = 1;
 	int stepCount = 0;
 	int rootCloneId = 0;
 	int **cloneTree;
 
 	double2 *debugLocHost, *debugLocDev;
 	uchar4 *debugColorHost, *debugColorDev;
+	int *debugCidStartsHost;
+	int	*debugCidEndsHost;
 
 	void performClone(SocialForceClone *parentClone, SocialForceClone *childClone);
 	void compareAndEliminate(SocialForceClone *parentClone, SocialForceClone *childClone);
@@ -380,6 +387,8 @@ public:
 
 		debugLocHost = new double2[NUM_CAP];
 		debugColorHost = new uchar4[NUM_CAP];
+		debugCidStartsHost = new int[NUM_CELL * NUM_CELL];
+		debugCidEndsHost = new int[NUM_CELL * NUM_CELL];
 		cudaMalloc((void**)&debugLocDev, sizeof(double2) * NUM_CAP);
 		cudaMalloc((void**)&debugColorDev, sizeof(uchar4) * NUM_CAP);
 
