@@ -7,10 +7,12 @@
 #include "TestVisual2Dlg.h"
 #include "afxdialogex.h"
 
+//#include "SocialForce_5.h" // analyze weight with 4 * 4 room configuration
 //#include "SocialForce_2.h" // analyze weight with 4 * 4 room configuration
 //#include "SocialForce_3.h" // analyze weight with 4 * 4 room configuration
-#include "SocialForceGPU.h"
 //#include "SocialForce_6.h" // updated neigbor searching strategy
+#include "SocialForceGPU.h"
+//#include "SocialForce_7.h"
 
 extern "C" void runTest();
 
@@ -78,6 +80,8 @@ BEGIN_MESSAGE_MAP(CTestVisual2Dlg, CDialogEx)
 	ON_WM_LBUTTONDBLCLK()
 	ON_WM_KEYUP()
 	ON_WM_MOUSEWHEEL()
+	ON_WM_KEYDOWN()
+	ON_WM_KEYUP()
 END_MESSAGE_MAP()
 
 
@@ -216,7 +220,11 @@ void CTestVisual2Dlg::myDraw()
 	WCHAR title[100];
 	swprintf_s(title, 100, L"parent: %d, clone: %d, numElem: %d, step: %d", c->parentCloneid, c->cloneid, c->numElem, cloneApp.stepCount);
 	this->SetWindowText((LPCTSTR)title);
-	
+
+#ifdef USE_GPU
+	cloneApp.getLocAndColorFromDevice();
+#endif
+
 	// draw passive clone area 
 	for (int i = 0; i < NUM_CELL; i++) {
 		for (int j = 0; j < NUM_CELL; j++) {
@@ -231,7 +239,7 @@ void CTestVisual2Dlg::myDraw()
 			}
 		}
 	}
-	
+
 	// draw grid
 	int numLine = NUM_CELL;
 	for (int i = 0; i < numLine; i++) {
@@ -243,7 +251,7 @@ void CTestVisual2Dlg::myDraw()
 		_memDC.MoveTo(0, i * screenHeight / NUM_CELL);
 		_memDC.LineTo(screenWidth, i * screenHeight / NUM_CELL);
 	}
-	
+
 
 	// draw wall
 	for (int i = 0; i < NUM_WALLS; i++) {
@@ -257,26 +265,25 @@ void CTestVisual2Dlg::myDraw()
 		_memDC.LineTo(x, y);
 	}
 
-	// draw gate
-	//for (int i = 0; i < NUM_PARAM; i++) {
-	//	CPen p(PS_SOLID, 5, RGB(0, 0, 0));
-	//	_memDC.SelectObject(p);
-	//	double x = c->gates[i].sx / ENV_DIM * screenWidth;
-	//	double y = c->gates[i].sy / ENV_DIM * screenHeight;
-	//	_memDC.MoveTo(x, y);
-	//	x = c->gates[i].ex / ENV_DIM * screenWidth;
-	//	y = c->gates[i].ey / ENV_DIM * screenHeight;
-	//	_memDC.LineTo(x, y);
-	//}
+	// draw gate 
+	/*
+	for (int i = 0; i < NUM_PARAM; i++) {
+	CPen p(PS_SOLID, 5, RGB(0, 0, 0));
+	_memDC.SelectObject(p);
+	double x = c->gates[i].sx / ENV_DIM * screenWidth;
+	double y = c->gates[i].sy / ENV_DIM * screenHeight;
+	_memDC.MoveTo(x, y);
+	x = c->gates[i].ex / ENV_DIM * screenWidth;
+	y = c->gates[i].ey / ENV_DIM * screenHeight;
+	_memDC.LineTo(x, y);
+	}
+	*/
 
 	// draw agent
 	/*CFont font;
 	font.CreatePointFont(80, L"Consolas", &_memDC);
 	CGdiObject *pOldFont = _memDC.SelectObject(&font);*/
-	
-#ifdef USE_GPU
-	cloneApp.getLocAndColorFromDevice();
-#endif
+
 	for (int i = 0; i < NUM_CAP; i++) {
 #ifdef USE_GPU
 		double2 &loc = cloneApp.debugLocHost[i];
@@ -293,7 +300,7 @@ void CTestVisual2Dlg::myDraw()
 		double x = loc.x / ENV_DIM * screenWidth;
 		double y = loc.y / ENV_DIM * screenHeight;
 		_memDC.Ellipse(x - 3, y - 3, x + 3, y + 3);
-		
+
 		//CPen p2(PS_SOLID, 1, RGB(0, 0, 0));
 		//_memDC.SelectObject(p2);
 		//CRect rect(x - 10, y - 10, x + 10, y + 10);
@@ -306,8 +313,8 @@ void CTestVisual2Dlg::myDraw()
 	// draw test
 	/*
 	CPoint points[] = { CPoint(20, 12), CPoint(88, 246),
-		CPoint(364, 192), CPoint(250, 48),
-		CPoint(175, 38), CPoint(388, 192), CPoint(145, 125) };
+	CPoint(364, 192), CPoint(250, 48),
+	CPoint(175, 38), CPoint(388, 192), CPoint(145, 125) };
 	_memDC.PolyBezier(points, 7);
 	*/
 
@@ -327,16 +334,6 @@ void CTestVisual2Dlg::OnLButtonDblClk(UINT nFlags, CPoint point)
 	CDialogEx::OnLButtonDblClk(nFlags, point);
 }
 
-
-void CTestVisual2Dlg::OnKeyUp(UINT nChar, UINT nRepCnt, UINT nFlags)
-{
-	// TODO: Add your message handler code here and/or call default
-	cloneApp.paintId = (nChar - 48) % cloneApp.totalClone;
-
-	CDialogEx::OnKeyUp(nChar, nRepCnt, nFlags);
-}
-
-
 BOOL CTestVisual2Dlg::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 {
 	// TODO: Add your message handler code here and/or call default
@@ -346,4 +343,25 @@ BOOL CTestVisual2Dlg::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 	SetTimer(1, 1000 / fps, NULL);
 
 	return CDialogEx::OnMouseWheel(nFlags, zDelta, pt);
+}
+
+
+void CTestVisual2Dlg::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
+{
+	// TODO: Add your message handler code here and/or call default
+
+	CDialogEx::OnKeyDown(nChar, nRepCnt, nFlags);
+}
+
+
+void CTestVisual2Dlg::OnKeyUp(UINT nChar, UINT nRepCnt, UINT nFlags)
+{
+	// TODO: Add your message handler code here and/or call default
+
+	if (nChar == VK_UP)
+		cloneApp.paintId = (cloneApp.paintId + 1) % cloneApp.totalClone;
+	if (nChar == VK_DOWN)
+		cloneApp.paintId = (cloneApp.paintId - 1 + cloneApp.totalClone) % cloneApp.totalClone;
+
+	CDialogEx::OnKeyUp(nChar, nRepCnt, nFlags);
 }

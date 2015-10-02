@@ -63,8 +63,8 @@
     <ClInclude Include="SocialForce_6.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="SocialForceGPU_2.h">
-      <Filter>GPU Files</Filter>
+    <ClInclude Include="SocialForce_7.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

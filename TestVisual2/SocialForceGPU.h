@@ -159,13 +159,13 @@ namespace util {
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 128
+#define NUM_CAP 32
 #define NUM_PARAM 3
-#define NUM_STEP 100
-#define NUM_GOAL 7
-#define ENV_DIM 32
+#define NUM_STEP 500
+#define NUM_GOAL 3
+#define ENV_DIM 128
 #define NUM_CELL 8
-#define CELL_DIM 4
+#define CELL_DIM 16
 #define RADIUS_I 6
 
 #define NUM_WALLS 10
@@ -289,6 +289,7 @@ public:
 		cudaMalloc((void**)&cidEnds, sizeof(int) * NUM_CELL * NUM_CELL);
 		cudaMemset(context, 0, sizeof(void*) * NUM_CAP);
 		cudaMemset(cloneFlags, 0, sizeof(bool) * NUM_CAP);
+		
 		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
 		cudaStreamCreate(&myStream);
 		
@@ -384,9 +385,9 @@ public:
 
 		for (int i = 0; i < totalClone; i++) {
 			int cloneParams[NUM_PARAM];
-			cloneParams[0] = i % 3 * 10 + 2;
-			cloneParams[1] = (i / 3) % 3 * 10 + 2;
-			cloneParams[2] = (i / 9) % 3 * 10 + 2;
+			cloneParams[0] = i % 3 + 2;
+			cloneParams[1] = (i / 3) % 3 + 2;
+			cloneParams[2] = (i / 9) % 3 + 2;
 			wchar_t message[128];
 			swprintf_s(message, L"[%d %d%d%d]\t", i, cloneParams[0] - 2, cloneParams[1] - 2, cloneParams[2] - 2);
 			OutputDebugString(message);

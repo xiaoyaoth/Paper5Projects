@@ -414,8 +414,6 @@ __device__ void SocialForceAgent::init(SocialForceClone* c, int idx) {
 	this->color.w = curand(&rStateLocal) % 256;
 	
 	SocialForceAgentData & dataLocal = this->data; //= &sfModel->originalAgents->dataArray[dataSlot];
-	float rx = (float)(idx / 32) / (float)32;
-	float ry = (float)(idx % 32) / (float)32;
 	dataLocal.loc.x = (0.5 + 0.4 * curand_uniform(&rStateLocal)) * ENV_DIM;
 	dataLocal.loc.y = (0.5 + 0.4 * curand_uniform(&rStateLocal)) * ENV_DIM;
 
