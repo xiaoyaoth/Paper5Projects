@@ -159,7 +159,7 @@ namespace util {
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 32
+#define NUM_CAP 128
 #define NUM_PARAM 3
 #define NUM_STEP 500
 #define NUM_GOAL 3
@@ -172,6 +172,8 @@ namespace util {
 
 class SocialForceAgent;
 class SocialForceClone;
+
+__constant__ int stepCountDev;
 
 typedef struct {
 	double2 goal;
@@ -262,7 +264,7 @@ public:
 	obstacleLine gates[NUM_PARAM];
 	bool takenMap[NUM_CELL * NUM_CELL];
 	SocialForceClone *selfDev;
-	cudaStream_t myStream;
+	//cudaStream_t myStream;
 
 	uchar4 color;
 	int cloneid;
@@ -291,7 +293,7 @@ public:
 		cudaMemset(cloneFlags, 0, sizeof(bool) * NUM_CAP);
 		
 		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
-		cudaStreamCreate(&myStream);
+		//cudaStreamCreate(&myStream);
 		
 		walls[0].init(0.1 * ENV_DIM, 0.09 * ENV_DIM, 0.1 * ENV_DIM, 0.91 * ENV_DIM);
 		walls[1].init(0.09 * ENV_DIM, 0.1 * ENV_DIM, 0.91 * ENV_DIM, 0.1 * ENV_DIM);
@@ -350,7 +352,7 @@ public:
 class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
-	int paintId = 0;
+	int paintId = 1;
 	int totalClone = 2;
 	int stepCount = 0;
 	int rootCloneId = 0;
@@ -358,6 +360,7 @@ public:
 
 	double2 *debugLocHost, *debugLocDev;
 	uchar4 *debugColorHost, *debugColorDev;
+	int *debugContextIdHost, *debugContextIdDev;
 	int *debugCidStartsHost;
 	int	*debugCidEndsHost;
 
@@ -374,10 +377,12 @@ public:
 
 		debugLocHost = new double2[NUM_CAP];
 		debugColorHost = new uchar4[NUM_CAP];
+		debugContextIdHost = new int[NUM_CAP];
 		debugCidStartsHost = new int[NUM_CELL * NUM_CELL];
 		debugCidEndsHost = new int[NUM_CELL * NUM_CELL];
 		cudaMalloc((void**)&debugLocDev, sizeof(double2) * NUM_CAP);
 		cudaMalloc((void**)&debugColorDev, sizeof(uchar4) * NUM_CAP);
+		cudaMalloc((void**)&debugContextIdDev, sizeof(int) * NUM_CAP);
 
 		cAll = new SocialForceClone*[totalClone];
 		cloneTree = new int*[2];

@@ -132,7 +132,7 @@ int g_stepCount = 0;
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 32
+#define NUM_CAP 128
 #define NUM_PARAM 3
 #define NUM_STEP 500
 #define NUM_GOAL 3
@@ -312,7 +312,6 @@ public:
 		numElem = 0;
 		cloneid = id;
 		ap = new AgentPool(NUM_CAP);
-		//agents = new SocialForceAgent[NUM_CAP];
 		context = new SocialForceAgent*[NUM_CAP];
 		contextSorted = new SocialForceAgent*[NUM_CAP];
 		cidStarts = new int[NUM_CELL * NUM_CELL];
@@ -693,7 +692,7 @@ class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
 	int paintId = 0;
-	int totalClone = 27;
+	int totalClone = 2;
 	int &stepCount = g_stepCount;
 	int rootCloneId = 0;
 	int **cloneTree;
@@ -941,7 +940,7 @@ public:
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
 		
-		proc(0, 1, 0, "g1");
+		proc(0, 1, 0, "g1");/*
 		proc(0, 2, 0, "g1");
 		proc(0, 3, 0, "g1");
 		proc(0, 6, 0, "g1");
@@ -966,7 +965,7 @@ public:
 		proc(5, 14, 0, "g1");
 		proc(5, 23, 0, "g1");
 		proc(8, 17, 0, "g1");
-		proc(8, 26, 0, "g1");
+		proc(8, 26, 0, "g1");*/
 
 		//cudaDeviceSynchronize();
 		printf("\n");

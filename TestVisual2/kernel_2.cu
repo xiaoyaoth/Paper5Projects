@@ -266,6 +266,7 @@ __device__ void SocialForceAgent::chooseNewGoal(const double2 &newLoc, double ep
 	}
 }
 __device__ void SocialForceAgent::step(){
+
 	double cMass = 100;
 
 	const double2& loc = data.loc;
@@ -345,7 +346,7 @@ __device__ void SocialForceAgent::init(SocialForceClone* c, int idx) {
 	SocialForceAgentData & dataLocal = this->data; //= &sfModel->originalAgents->dataArray[dataSlot];
 	float rx = (float)(idx / 32) / (float)32;
 	float ry = (float)(idx % 32) / (float)32;
-	dataLocal.loc.x = (0.5 + 0.4 * curand_uniform(&rStateLocal)) * ENV_DIM;
+	dataLocal.loc.x = (0.6 + 0.1 * curand_uniform(&rStateLocal)) * ENV_DIM;
 	dataLocal.loc.y = (0.5 + 0.4 * curand_uniform(&rStateLocal)) * ENV_DIM;
 
 	dataLocal.velocity.x = 2;//4 * (this->random->uniform()-0.5);
@@ -405,7 +406,8 @@ void SocialForceClone::step(int stepCount) {
 	//NeighborModule::sortAgentByLocKernel << <1, 1, 0, myStream >> >(this->apHost->agentPtrArray, this->rState, this->numElem);
 	
 	gSize = GRID_SIZE(numElem);
-	clone::stepKernel << <gSize, BLOCK_SIZE, 0, myStream >> >(selfDev, numElem);
+	//clone::stepKernel << <gSize, BLOCK_SIZE, 0, myStream >> >(selfDev, numElem);
+	clone::stepKernel << <gSize, BLOCK_SIZE >> >(selfDev, numElem);
 }
 
 void SocialForceClone::swap() {
@@ -421,7 +423,8 @@ void SocialForceClone::alterGate(int stepCount) {
 		if (cloneParams[i] == stepCount) {
 			changed = true;
 			gates[i].init(0, 0, 0, 0);
-			cudaMemcpyAsync(&selfDev->gates[i], &gates[i], sizeof(obstacleLine), cudaMemcpyHostToDevice, myStream);
+			//cudaMemcpyAsync(&selfDev->gates[i], &gates[i], sizeof(obstacleLine), cudaMemcpyHostToDevice, myStream);
+			cudaMemcpy(&selfDev->gates[i], &gates[i], sizeof(obstacleLine), cudaMemcpyHostToDevice);
 		}
 	}
 }
@@ -455,10 +458,10 @@ namespace AppUtil {
 #define MY_MIN(a, b) (a < b ? a : b)
 		int minx = MY_MAX((loc.x - RADIUS_I) / CELL_DIM, 0);
 		int miny = MY_MAX((loc.y - RADIUS_I) / CELL_DIM, 0);
-		int maxx = MY_MIN((loc.x + RADIUS_I) / CELL_DIM, NUM_CELL);
-		int maxy = MY_MIN((loc.y + RADIUS_I) / CELL_DIM, NUM_CELL);
-		for (int i = minx; i < maxx; i++)
-			for (int j = miny; j < maxy; j++)
+		int maxx = MY_MIN((loc.x + RADIUS_I) / CELL_DIM, NUM_CELL - 1);
+		int maxy = MY_MIN((loc.y + RADIUS_I) / CELL_DIM, NUM_CELL - 1);
+		for (int i = minx; i <= maxx; i++)
+			for (int j = miny; j <= maxy; j++)
 				if (childClone->takenMap[i * NUM_CELL + j])
 					return true;
 
@@ -543,28 +546,33 @@ void SocialForceSimApp::performClone(SocialForceClone *parentClone, SocialForceC
 	childClone->parentCloneid = parentClone->cloneid;
 
 	// 1. copy the context of parent clone
-	cudaMemcpyAsync(childClone->context, parentClone->context, NUM_CAP * sizeof(SocialForceAgent*), cudaMemcpyDeviceToDevice, childClone->myStream);
+	//cudaMemcpyAsync(childClone->context, parentClone->context, NUM_CAP * sizeof(SocialForceAgent*), cudaMemcpyDeviceToDevice, childClone->myStream);
+	cudaMemcpy(childClone->context, parentClone->context, NUM_CAP * sizeof(SocialForceAgent*), cudaMemcpyDeviceToDevice);
 	getLastCudaError("perform clone");
 
 	// 2. update the context with agents of its own
 	if (childClone->numElem > 0) {
 		int gSize = GRID_SIZE(childClone->numElem);
-		AppUtil::updateContextKernel << <gSize, BLOCK_SIZE, 0, childClone->myStream >> >(childClone->selfDev, childClone->numElem);
+		//AppUtil::updateContextKernel << <gSize, BLOCK_SIZE, 0, childClone->myStream >> >(childClone->selfDev, childClone->numElem);
+		AppUtil::updateContextKernel << <gSize, BLOCK_SIZE >> >(childClone->selfDev, childClone->numElem);
 	}
 	getLastCudaError("perform clone");
 
 	// 3. construct passive cloning map
 	if (childClone->numElem > 0) {
-		cudaMemsetAsync(childClone->selfDev->takenMap, 0, sizeof(bool) * NUM_CELL * NUM_CELL, childClone->myStream);
+		//cudaMemsetAsync(childClone->selfDev->takenMap, 0, sizeof(bool) * NUM_CELL * NUM_CELL, childClone->myStream);
+		cudaMemset(childClone->selfDev->takenMap, 0, sizeof(bool) * NUM_CELL * NUM_CELL);
 		int gSize = GRID_SIZE(childClone->numElem);
-		AppUtil::constructPassiveMap << <gSize, BLOCK_SIZE, 0, childClone->myStream >> >(childClone->selfDev, childClone->numElem);
+		//AppUtil::constructPassiveMap << <gSize, BLOCK_SIZE, 0, childClone->myStream >> >(childClone->selfDev, childClone->numElem);
+		AppUtil::constructPassiveMap << <gSize, BLOCK_SIZE >> >(childClone->selfDev, childClone->numElem);
 	}
 	getLastCudaError("perform clone");
 
 	// 4. perform active and passive cloning (in cloningCondition checking)
 	int gSize = GRID_SIZE(NUM_CAP);
-	AppUtil::performCloningKernel << <gSize, BLOCK_SIZE, 0, childClone->myStream >> >(parentClone->selfDev, childClone->selfDev, NUM_CAP);
-	cudaMemcpyAsync(childClone, childClone->selfDev, sizeof(SocialForceClone), cudaMemcpyDeviceToHost, childClone->myStream);
+	AppUtil::performCloningKernel << <gSize, BLOCK_SIZE >> >(parentClone->selfDev, childClone->selfDev, NUM_CAP);
+	//AppUtil::performCloningKernel << <gSize, BLOCK_SIZE, 0, childClone->myStream >> >(parentClone->selfDev, childClone->selfDev, NUM_CAP);
+	cudaMemcpy(childClone, childClone->selfDev, sizeof(SocialForceClone), cudaMemcpyDeviceToHost/*, childClone->myStream*/);
 	/*for (int i = 0; i < NUM_CAP; i++) {
 		SocialForceAgent *agent = parentClone->context[i];
 		if (cloningCondition(agent, childClone->takenMap, parentClone, childClone)) {
@@ -576,6 +584,7 @@ void SocialForceSimApp::performClone(SocialForceClone *parentClone, SocialForceC
 			childClone->numElem++;
 		}
 	}*/
+	//cudaStreamSynchronize(childClone->myStream);
 	getLastCudaError("perform clone");
 
 }
@@ -604,10 +613,14 @@ void compareAndEliminateCPU(SocialForceClone *parentClone, SocialForceClone *chi
 void SocialForceSimApp::compareAndEliminate(SocialForceClone *parentClone, SocialForceClone *childClone) {
 	if (childClone->numElem == 0) return;
 	int gSize = GRID_SIZE(childClone->numElem);
-	AppUtil::compareAndEliminateKernel << <gSize, BLOCK_SIZE, 0, childClone->myStream >> >(parentClone->selfDev, childClone->selfDev, childClone->numElem);
+	//AppUtil::compareAndEliminateKernel << <gSize, BLOCK_SIZE, 0, childClone->myStream >> >(parentClone->selfDev, childClone->selfDev, childClone->numElem);
+	AppUtil::compareAndEliminateKernel << <gSize, BLOCK_SIZE>> >(parentClone->selfDev, childClone->selfDev, childClone->numElem);
 	gSize = GRID_SIZE(NUM_CAP);
-	AppUtil::reorderKernel << <1, 1, 0, childClone->myStream >> >(childClone->selfDev, childClone->numElem);
-	cudaMemcpyAsync(childClone, childClone->selfDev, sizeof(SocialForceClone), cudaMemcpyDeviceToHost, childClone->myStream);
+	//AppUtil::reorderKernel << <1, 1, 0, childClone->myStream >> >(childClone->selfDev, childClone->numElem);
+	AppUtil::reorderKernel << <1, 1 >> >(childClone->selfDev, childClone->numElem);
+	cudaMemcpy(childClone, childClone->selfDev, sizeof(SocialForceClone), cudaMemcpyDeviceToHost/*, childClone->myStream*/);
+	//cudaStreamSynchronize(childClone->myStream);
+	
 	//wchar_t message[20];
 	//swprintf_s(message, 20, L"numElem: %d\n", childClone->numElem);
 	//OutputDebugString(message);
@@ -712,20 +725,22 @@ void SocialForceSimApp::mst() {
 	delete key;
 }
 
-__global__ void getLocAndColorKernel(SocialForceClone *c, double2 *loc, uchar4 *color, int numElem) {
+__global__ void getLocAndColorKernel(SocialForceClone *c, double2 *loc, uchar4 *color, int *contextId, int numElem) {
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
 	if (idx < numElem) {
 		loc[idx] = c->context[idx]->data.loc;
 		color[idx] = c->context[idx]->color;
+		contextId[idx] = c->context[idx]->contextId;
 	}
 }
 
 void SocialForceSimApp::getLocAndColorFromDevice(){
 	SocialForceClone *c = cAll[paintId];
 	int gSize = GRID_SIZE(NUM_CAP);
-	getLocAndColorKernel << <gSize, BLOCK_SIZE >> >(c->selfDev, debugLocDev, debugColorDev, NUM_CAP);
+	getLocAndColorKernel << <gSize, BLOCK_SIZE >> >(c->selfDev, debugLocDev, debugColorDev, debugContextIdDev, NUM_CAP);
 	cudaMemcpy(debugLocHost, debugLocDev, sizeof(double2) * NUM_CAP, cudaMemcpyDeviceToHost);
 	cudaMemcpy(debugColorHost, debugColorDev, sizeof(uchar4) * NUM_CAP, cudaMemcpyDeviceToHost);
+	cudaMemcpy(debugContextIdHost, debugContextIdDev, sizeof(int) * NUM_CAP, cudaMemcpyDeviceToHost);
 	cudaMemcpy(c->takenMap, c->selfDev->takenMap, sizeof(bool) * NUM_CELL * NUM_CELL, cudaMemcpyDeviceToHost);
 	//cudaMemcpy(debugCidStartsHost, c->cidStarts, sizeof(int) * NUM_CELL * NUM_CELL, cudaMemcpyDeviceToHost);
 	//cudaMemcpy(debugCidEndsHost, c->cidEnds, sizeof(int) * NUM_CELL * NUM_CELL, cudaMemcpyDeviceToHost);

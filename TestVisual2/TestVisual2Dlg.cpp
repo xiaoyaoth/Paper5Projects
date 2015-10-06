@@ -280,10 +280,6 @@ void CTestVisual2Dlg::myDraw()
 	*/
 
 	// draw agent
-	/*CFont font;
-	font.CreatePointFont(80, L"Consolas", &_memDC);
-	CGdiObject *pOldFont = _memDC.SelectObject(&font);*/
-
 	for (int i = 0; i < NUM_CAP; i++) {
 #ifdef USE_GPU
 		double2 &loc = cloneApp.debugLocHost[i];
@@ -301,12 +297,20 @@ void CTestVisual2Dlg::myDraw()
 		double y = loc.y / ENV_DIM * screenHeight;
 		_memDC.Ellipse(x - 3, y - 3, x + 3, y + 3);
 
-		//CPen p2(PS_SOLID, 1, RGB(0, 0, 0));
-		//_memDC.SelectObject(p2);
-		//CRect rect(x - 10, y - 10, x + 10, y + 10);
-		//CString str;
-		//str.Format(L"%d", ag.contextId);
-		//_memDC.DrawText(str, rect, DT_CENTER);
+		// draw agent id;
+//		CFont font;
+//		font.CreatePointFont(80, L"Consolas", &_memDC);
+//		CGdiObject *pOldFont = _memDC.SelectObject(&font);
+//		CPen p2(PS_SOLID, 1, RGB(0, 0, 0));
+//		_memDC.SelectObject(p2);
+//		CRect rect(x - 10, y - 10, x + 10, y + 10);
+//		CString str;
+//#ifdef USE_GPU
+//		str.Format(L"%d", cloneApp.debugContextIdHost[i]);
+//#else
+//		str.Format(L"%d", ag.contextId);
+//#endif
+//		_memDC.DrawText(str, rect, DT_CENTER);
 	}
 	//_memDC.SelectObject(pOldFont);
 
