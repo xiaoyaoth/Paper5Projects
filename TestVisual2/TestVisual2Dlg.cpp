@@ -217,8 +217,8 @@ void CTestVisual2Dlg::myDraw()
 	SocialForceClone *c = cloneApp.cAll[paintId];
 
 	// draw title
-	WCHAR title[100];
-	swprintf_s(title, 100, L"parent: %d, clone: %d, numElem: %d, step: %d", c->parentCloneid, c->cloneid, c->numElem, cloneApp.stepCount);
+	WCHAR title[128];
+	swprintf_s(title, 128, L"parent: %d, clone: %d, numElem: %d, step: %d", c->parentCloneid, c->cloneid, c->numElem, cloneApp.stepCount);
 	this->SetWindowText((LPCTSTR)title);
 
 #ifdef USE_GPU

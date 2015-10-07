@@ -148,7 +148,7 @@ namespace util {
 	}
 }
 
-#define BLOCK_SIZE 128
+#define BLOCK_SIZE 64
 #define GRID_SIZE(n) (n%BLOCK_SIZE==0 ? n/BLOCK_SIZE : n/BLOCK_SIZE + 1)
 
 /* application related constants */
@@ -353,7 +353,7 @@ class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
 	int paintId = 0;
-	int totalClone = 1;
+	int totalClone = 27;
 	int stepCount = 0;
 	int rootCloneId = 0;
 	int **cloneTree;
@@ -459,13 +459,10 @@ public:
 		proc(8, 26, 0, "g1");
 		*/
 		
-		/*
+		
 #pragma omp parallel num_threads(6) 
 		{
 			int tid = omp_get_thread_num();
-			wchar_t message[16];
-			swprintf_s(message, L"%d ", tid);
-			OutputDebugString(message);
 			switch (tid) {
 			case 0: proc(0, 1, 0, "g1"); break;
 			case 1: proc(0, 2, 0, "g1"); break;
@@ -478,9 +475,6 @@ public:
 #pragma omp parallel num_threads(12) 
 		{
 			int tid = omp_get_thread_num();
-			wchar_t message[16];
-			swprintf_s(message, L"%d ", tid);
-			OutputDebugString(message);
 			switch (tid) {
 			case 0: proc(1, 4, 0, "g1"); break;
 			case 1: proc(1, 7, 0, "g1"); break;
@@ -499,9 +493,6 @@ public:
 #pragma omp parallel num_threads(8) 
 		{
 			int tid = omp_get_thread_num();
-			wchar_t message[16];
-			swprintf_s(message, L"%d ", tid);
-			OutputDebugString(message);
 			switch (tid) {
 			case 0: proc(4, 13, 0, "g1"); break;
 			case 1: proc(4, 22, 0, "g1"); break;
@@ -513,7 +504,6 @@ public:
 			case 7: proc(8, 26, 0, "g1"); break;
 			}
 		}
-		*/
 
 		//cudaDeviceSynchronize();
 		printf("\n");

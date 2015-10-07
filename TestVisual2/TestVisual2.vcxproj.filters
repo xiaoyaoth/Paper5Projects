@@ -100,5 +100,8 @@
     <CudaCompile Include="kernel_2.cu">
       <Filter>GPU Files</Filter>
     </CudaCompile>
+    <CudaCompile Include="kernel_3.cu">
+      <Filter>GPU Files</Filter>
+    </CudaCompile>
   </ItemGroup>
 </Project>
