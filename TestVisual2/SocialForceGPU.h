@@ -194,6 +194,10 @@ public:
 	SocialForceAgentData dataCopy;
 	double2 goalSeq[NUM_GOAL];
 
+	int flagCloning[NUM_PARAM];
+	int flagCloned[NUM_PARAM];
+	int cloneIdArray[NUM_PARAM];
+
 	__device__ double correctCrossBoader(double val, double limit);
 	__device__ void computeIndivSocialForceRoom(const SocialForceAgentData &myData, const SocialForceAgentData &otherData, double2 &fSum);
 	__device__ void computeForceWithWall(const SocialForceAgentData &dataLocal, obstacleLine &wall, const int &cMass, double2 &fSum);
@@ -269,6 +273,10 @@ public:
 	uchar4 color;
 	int cloneid;
 	int parentCloneid;
+
+	int cloneIdArray[NUM_PARAM];
+	int cloneMasks[NUM_PARAM];
+	int cloneLevel;
 
 	fstream fout;
 

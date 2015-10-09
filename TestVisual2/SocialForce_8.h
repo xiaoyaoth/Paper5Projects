@@ -7,7 +7,7 @@
 #include "inc\helper_math.h"
 #include <random>
 
-/* FOCUS: test GPU neighbor searching strategy on CPU */
+/* FOCUS: test old neighbor searching strategy on CPU */
 
 using namespace std;
 
@@ -171,6 +171,9 @@ public:
 
 	uchar4 color;
 	int contextId;
+
+	int flagCloning[NUM_PARAM];
+	int flagCloned[NUM_PARAM];
 	//double gateSize;
 
 	double correctCrossBoader(double val, double limit);
@@ -306,9 +309,13 @@ public:
 	uint cloneid;
 	int parentCloneid;
 
+	int cloneLevel;
+	int cloneMasks[NUM_PARAM];
+	int cloneIdArray[NUM_PARAM];
+
 	fstream fout;
 
-	SocialForceClone(int id, int pv1[NUM_PARAM]) {
+	SocialForceClone(int id, int pv1[NUM_PARAM], int clondIdArray1[NUM_PARAM]) {
 		numElem = 0;
 		cloneid = id;
 		ap = new AgentPool(NUM_CAP);
@@ -323,6 +330,7 @@ public:
 		color.x = rand() % 255; color.y = rand() % 255; color.z = rand() % 255;
 
 		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
+		memcpy(cloneIdArray, clondIdArray1, sizeof(int) * NUM_PARAM);
 
 		walls[0].init(0.1 * ENV_DIM, 0.09 * ENV_DIM, 0.1 * ENV_DIM, 0.91 * ENV_DIM);
 		walls[1].init(0.09 * ENV_DIM, 0.1 * ENV_DIM, 0.91 * ENV_DIM, 0.1 * ENV_DIM);
@@ -343,7 +351,14 @@ public:
 		gates[1].init(0.3 * ENV_DIM - cloneParams[1], 0.5 * ENV_DIM, 0.3 * ENV_DIM + cloneParams[1], 0.5 * ENV_DIM);
 		gates[2].init(0.5 * ENV_DIM, 0.3 * ENV_DIM - cloneParams[2], 0.5 * ENV_DIM, 0.3 * ENV_DIM + cloneParams[2]);
 
+		for (cloneLevel = NUM_PARAM - 1; cloneLevel >= 0; cloneLevel--)
+			if (cloneIdArray[cloneLevel] != 0) break;
 
+		for (int i = 0; i < NUM_PARAM; i++) {
+			cloneMasks[i] = 1;
+			cloneMasks[i] = cloneMasks[i] << cloneIdArray[i];
+			cloneMasks[i] = cloneMasks[i] >> 1;
+		}
 	}
 	void step(int stepCount);
 	void alterGate(int stepCount);
@@ -506,33 +521,6 @@ void SocialForceAgent::computeSocialForceRoom(SocialForceAgentData &dataLocal, d
 	double ds = 0;
 
 	int neighborCount = 0;
-	int cxmin = (dataLocal.loc.x - RADIUS_I) / (ENV_DIM / NUM_CELL);
-	int cxmax = (dataLocal.loc.x + RADIUS_I) / (ENV_DIM / NUM_CELL);
-	int cymin = (dataLocal.loc.y - RADIUS_I) / (ENV_DIM / NUM_CELL);
-	int cymax = (dataLocal.loc.y + RADIUS_I) / (ENV_DIM / NUM_CELL);
-	cxmin = max(cxmin, 0);
-	cymin = max(cymin, 0);
-	cxmax = min(cxmax, NUM_CELL - 1);
-	cymax = min(cymax, NUM_CELL - 1);
-
-	/*
-	for (int ix = cxmin; ix <= cxmax; ix++) {
-	for (int iy = cymin; iy <= cymax; iy++) {
-	int cid = NeighborModule::zcode(ix, iy);
-	int cidStart = myClone->cidStarts[cid];
-	int cidEnd = myClone->cidEnds[cid];
-	for (int i = cidStart; i < cidEnd; i++) {
-	SocialForceAgent *other = myClone->contextSorted[i];
-	SocialForceAgentData otherData = other->data;
-	ds = length(otherData.loc - dataLocal.loc);
-	if (ds < 6 && ds > 0) {
-	neighborCount++;
-	computeIndivSocialForceRoom(dataLocal, otherData, fSum);
-	}
-	}
-	}
-	}
-	*/
 
 	for (int i = 0; i < NUM_CAP; i++) {
 		SocialForceAgent *other = myClone->context[i];
@@ -541,6 +529,9 @@ void SocialForceAgent::computeSocialForceRoom(SocialForceAgentData &dataLocal, d
 		if (ds < 6 && ds > 0) {
 			neighborCount++;
 			computeIndivSocialForceRoom(dataLocal, otherData, fSum);
+
+			for (int i = 0; i < NUM_PARAM; i++)
+				this->flagCloning[i] |= other->flagCloning[i];
 		}
 	}
 
@@ -581,9 +572,6 @@ void SocialForceAgent::step(){
 	const double& v0 = data.v0;
 	const double& mass = data.mass;
 
-	if (g_stepCount == 71)
-		printf("");
-
 	//compute the direction
 	double2 dvt;
 	computeDirection(data, dvt);
@@ -596,6 +584,14 @@ void SocialForceAgent::step(){
 	for (int i = 0; i < NUM_WALLS; i++) {
 		obstacleLine wall = myClone->walls[i];
 		computeForceWithWall(data, wall, cMass, fSum);
+	}
+
+	for (int i = 0; i < NUM_PARAM; i++) {
+		obstacleLine &gate = myClone->gates[i];
+		if (gate.pointToLineDist(loc) < 6) {
+			// ideally, parent clone agent should compare against all child clone parameter configuration
+			this->flagCloning[i] = -1;
+		}
 	}
 
 	//sum up
@@ -640,11 +636,17 @@ void SocialForceAgent::step(){
 	dataCopy.velocity = newVelo;
 	dataCopy.goal = newGoal;
 }
+
 void SocialForceAgent::init(SocialForceClone *c, int idx) {
 	this->contextId = idx;
 	this->goalIdx = 0;
 	this->myClone = c;
 	this->myOrigin = NULL;
+
+	for (int i = 0; i < NUM_PARAM; i++) {
+		this->flagCloning[i] = 0;
+		this->flagCloned[i] = 0;
+	}
 
 	this->color.x = rand() % 255;
 	this->color.y = rand() % 255;
@@ -670,6 +672,11 @@ void SocialForceAgent::initNewClone(SocialForceAgent *parent, SocialForceClone *
 	this->myOrigin = parent;
 	this->myClone = childClone;
 	this->goalIdx = parent->goalIdx;
+
+	for (int i = 0; i < NUM_PARAM; i++) {
+		this->flagCloning[i] = 0;
+		this->flagCloned[i] = 0;
+	}
 
 	this->data = parent->data;
 	this->dataCopy = parent->dataCopy;
@@ -705,11 +712,14 @@ public:
 		int j = 0;
 
 		for (int i = 0; i < totalClone; i++) {
-			int cloneParams[NUM_PARAM];
-			cloneParams[0] = i % 3 + 2;
+			int cloneParams[NUM_PARAM], cloneIdArray[NUM_PARAM];
+			cloneParams[0] = (i % 3) + 2;
 			cloneParams[1] = (i / 3) % 3 + 2;
 			cloneParams[2] = (i / 9) % 3 + 2;
-			cAll[i] = new SocialForceClone(i, cloneParams);
+			cloneIdArray[0] = i % 3;
+			cloneIdArray[1] = (i / 3) % 3;
+			cloneIdArray[2] = (i / 9) % 3;
+			cAll[i] = new SocialForceClone(i, cloneParams, cloneIdArray);
 		}
 
 		SocialForceAgent *agents = cAll[rootCloneId]->ap->agentArray;
@@ -766,6 +776,49 @@ public:
 		// pass all the check, don't need to be cloned
 		return false;
 	}
+
+	void performCloneOld(SocialForceClone* parentClone, SocialForceClone* childClone) {
+		childClone->parentCloneid = parentClone->cloneid;
+
+		// 1. copy the context of parent clone
+		memcpy(childClone->context, parentClone->context, NUM_CAP * sizeof(void*));
+
+		// 2. update the context with agents of its own
+		for (int i = 0; i < childClone->numElem; i++) {
+			SocialForceAgent *agent = childClone->ap->agentPtrArray[i];
+			childClone->context[agent->contextId] = agent;
+		}
+
+		// 3. construct passive cloning map
+		double2 dim = make_double2(ENV_DIM, ENV_DIM);
+		memset(childClone->takenMap, 0, sizeof(bool) * NUM_CELL * NUM_CELL);
+		for (int i = 0; i < childClone->numElem; i++) {
+			const SocialForceAgent &agent = *childClone->ap->agentPtrArray[i];
+			int takenId = agent.data.loc.x / CELL_DIM;
+			takenId = takenId * NUM_CELL + agent.data.loc.y / CELL_DIM;
+			childClone->takenMap[takenId] = true;
+		}
+
+		for (int i = 0; i < parentClone->numElem; i++) {
+			SocialForceAgent *ag = parentClone->ap->agentPtrArray[i];
+			int cloneLevelLocal = childClone->cloneLevel;
+			int cloneMaskLocal = childClone->cloneMasks[cloneLevelLocal];
+			int cloneDecision = ~ag->flagCloned[cloneLevelLocal] & cloneMaskLocal & ag->flagCloning[cloneLevelLocal];
+			if (cloneDecision > 0) {
+				ag->flagCloned[cloneLevelLocal] |= cloneMaskLocal;
+				ag->flagCloning[cloneLevelLocal] &= ~cloneMaskLocal;
+
+				SocialForceAgent &childAgent = *childClone->ap->agentPtrArray[childClone->numElem];
+				childClone->ap->takenFlags[childClone->numElem] = true;
+				childAgent.initNewClone(ag, childClone);
+				childClone->context[childAgent.contextId] = &childAgent;
+				childClone->cloneFlag[childAgent.contextId] = true;
+				childClone->numElem++;
+			}
+		}
+	}
+
+
 	void performClone(SocialForceClone *parentClone, SocialForceClone *childClone) {
 		childClone->parentCloneid = parentClone->cloneid;
 
@@ -823,15 +876,36 @@ public:
 		}
 		childClone->numElem = childClone->ap->reorder(childClone->numElem);
 	}
+
+	void compareAndEliminateOld(SocialForceClone *parentClone, SocialForceClone *childClone) {
+		for (int i = 0; i < childClone->numElem; i++) {
+			SocialForceAgent &childAgent = *childClone->ap->agentPtrArray[i];
+			SocialForceAgent &parentAgent = *childAgent.myOrigin;
+
+			double velDiff = length(childAgent.dataCopy.velocity - parentAgent.dataCopy.velocity);
+			double locDiff = length(childAgent.dataCopy.loc - parentAgent.dataCopy.loc);
+			if (locDiff == 0 && velDiff == 0) {
+				childClone->ap->takenFlags[i] = false;
+				childClone->cloneFlag[childAgent.contextId] = false;
+				int cloneLevelLocal = childClone->cloneLevel;
+				int cloneMaskLocal = childClone->cloneMasks[cloneLevelLocal];
+
+				parentAgent.flagCloned[cloneLevelLocal] &= ~cloneMaskLocal;
+				parentAgent.flagCloning[cloneLevelLocal] &= ~cloneMaskLocal;
+			}
+		}
+		childClone->numElem = childClone->ap->reorder(childClone->numElem);
+	}
+	
 	void proc(int p, int c, bool o, char *s) {
-		performClone(cAll[p], cAll[c]);
+		performCloneOld(cAll[p], cAll[c]);
 		cAll[c]->step(stepCount);
 		if (o) {
 			if (stepCount < 1000)
 				cAll[c]->output(stepCount, s);
 		}
 		//cAll[c]->output2(stepCount, s);
-		compareAndEliminate(cAll[p], cAll[c]);
+		compareAndEliminateOld(cAll[p], cAll[c]);
 	}
 	void swap(int **cloneTree, int a, int b) {
 		int t1 = cloneTree[0][a];

@@ -259,11 +259,15 @@ __device__ void SocialForceAgent::computeSocialForceRoom(SocialForceAgentData &d
 		//int iterCount = cidEnd - cidStart > BLOCK_SIZE ? BLOCK_SIZE : cidEnd - cidStart;
 
 	for (int i = 0; i < NUM_CAP; i++) {
-		SocialForceAgentData otherData = myClone->context[i]->data;
+		SocialForceAgent *other = myClone->context[i];
+		SocialForceAgentData otherData = other->data;
 		ds = length(otherData.loc - dataLocal.loc);
 		if (ds < 6 && ds > 0) {
 			neighborCount++;
 			computeIndivSocialForceRoom(dataLocal, otherData, fSum);
+
+			for (int i = 0; i < NUM_PARAM; i++)
+				this->flagCloning[i] |= other->flagCloning[i];
 		}
 	}
 
@@ -328,6 +332,14 @@ __device__ void SocialForceAgent::step(){
 		computeForceWithWall(data, wall, cMass, fSum);
 	}
 
+	for (int i = 0; i < NUM_PARAM; i++) {
+		obstacleLine &gate = myClone->gates[i];
+		if (gate.pointToLineDist(loc) < 6) {
+			// ideally, parent clone agent should compare against all child clone parameter configuration
+			this->flagCloning[i] = -1;
+		}
+	}
+
 	//sum up
 	dvt.x += fSum.x / mass;
 	dvt.y += fSum.y / mass;
@@ -376,6 +388,11 @@ __device__ void SocialForceAgent::init(SocialForceClone* c, int idx) {
 	this->goalIdx = 0;
 	this->myClone = c;
 
+	for (int i = 0; i < NUM_PARAM; i++) {
+		this->flagCloning[i] = 0;
+		this->flagCloned[i] = 0;
+	}
+
 	curandState_t rStateLocal = c->rState[idx];
 	this->color.x = curand(&rStateLocal) % 256;
 	this->color.y = curand(&rStateLocal) % 256;
@@ -408,6 +425,11 @@ __device__ void SocialForceAgent::initNewClone(SocialForceAgent *parent, SocialF
 	this->goalIdx = parent->goalIdx;
 	for (int i = 0; i < NUM_GOAL; i++)
 		this->goalSeq[i] = parent->goalSeq[i];
+
+	for (int i = 0; i < NUM_PARAM; i++) {
+		this->flagCloning[i] = 0;
+		this->flagCloned[i] = 0;
+	}
 
 	this->data = parent->data;
 	this->dataCopy = parent->dataCopy;
@@ -544,6 +566,13 @@ namespace AppUtil {
 				c->cloneFlags[childAgent.contextId] = true;
 				//c->numElem++; /* not written back */
 			}
+		}
+	}
+
+	__global__ void performCloningKernel(SocialForceClone *p, SocialForceClone *c, int numCap) {
+		int idx = threadIdx.x + blockIdx.x * blockDim.x;
+		if (idx < numCap) {
+
 		}
 	}
 	

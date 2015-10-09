@@ -1,4 +1,4 @@
-#include "../TestVisual2/SocialForceGPU.h"
+#include "../TestVisual2/SocialForce_8.h"
 #include <iostream>
 
 using namespace std;
@@ -55,7 +55,7 @@ int main1(int argc, char **argv) {
 	SocialForceSimApp app1;
 	app1.initSimClone();
 	for (int i = 0; i < 100; i++) {
-		app1.stepApp5(0);
+		app1.stepApp0(0);
 		fout << GetTickCount() << endl;
 	}
 	et = GetTickCount();
@@ -66,7 +66,7 @@ int main1(int argc, char **argv) {
 	SocialForceSimApp app2;
 	app2.initSimClone();
 	for (int i = 0; i < 100; i++) {
-		app2.stepApp5(0);
+		app2.stepApp0(0);
 		fout << GetTickCount() << endl;
 	}
 	et = GetTickCount();
@@ -77,7 +77,7 @@ int main1(int argc, char **argv) {
 	SocialForceSimApp app3;
 	app3.initSimClone();
 	for (int i = 0; i < 100; i++) {
-		app3.stepApp5(0);
+		app3.stepApp0(0);
 		fout << GetTickCount() << endl;
 	}
 	et = GetTickCount();
