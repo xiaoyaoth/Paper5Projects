@@ -282,7 +282,7 @@ public:
 
 	__host__ SocialForceClone() {}
 
-	__host__ void init(int id, int pv1[NUM_PARAM]) {
+	__host__ void init(int id, int pv1[NUM_PARAM], int clondIdArray1[NUM_PARAM]) {
 		this->color.x = rand() % 256;
 		this->color.y = rand() % 256;
 		this->color.z = rand() % 256;
@@ -301,6 +301,7 @@ public:
 		cudaMemset(cloneFlags, 0, sizeof(bool) * NUM_CAP);
 		
 		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
+		memcpy(cloneIdArray, clondIdArray1, sizeof(int) * NUM_PARAM);
 		cudaStreamCreate(&myStream);
 		
 		walls[0].init(0.1 * ENV_DIM, 0.09 * ENV_DIM, 0.1 * ENV_DIM, 0.91 * ENV_DIM);
@@ -321,6 +322,15 @@ public:
 		gates[0].init(0.5 * ENV_DIM, 0.7 * ENV_DIM - cloneParams[0], 0.5 * ENV_DIM, 0.7 * ENV_DIM + cloneParams[0]);
 		gates[1].init(0.3 * ENV_DIM - cloneParams[1], 0.5 * ENV_DIM, 0.3 * ENV_DIM + cloneParams[1], 0.5 * ENV_DIM);
 		gates[2].init(0.5 * ENV_DIM, 0.3 * ENV_DIM - cloneParams[2], 0.5 * ENV_DIM, 0.3 * ENV_DIM + cloneParams[2]);
+
+		for (cloneLevel = NUM_PARAM - 1; cloneLevel >= 0; cloneLevel--)
+			if (cloneIdArray[cloneLevel] != 0) break;
+
+		for (int i = 0; i < NUM_PARAM; i++) {
+			cloneMasks[i] = 1;
+			cloneMasks[i] = cloneMasks[i] << cloneIdArray[i];
+			cloneMasks[i] = cloneMasks[i] >> 1;
+		}
 
 		util::hostAllocCopyToDevice(this, &this->selfDev);
 	}
@@ -397,15 +407,18 @@ public:
 		int j = 0;
 
 		for (int i = 0; i < totalClone; i++) {
-			int cloneParams[NUM_PARAM];
+			int cloneParams[NUM_PARAM], cloneIdArray[NUM_PARAM];
 			cloneParams[0] = i % 3 + 2;
 			cloneParams[1] = (i / 3) % 3 + 2;
 			cloneParams[2] = (i / 9) % 3 + 2;
+			cloneIdArray[0] = i % 3;
+			cloneIdArray[1] = (i / 3) % 3;
+			cloneIdArray[2] = (i / 9) % 3;
 			wchar_t message[128];
 			swprintf_s(message, L"[%d %d%d%d]\t", i, cloneParams[0] - 2, cloneParams[1] - 2, cloneParams[2] - 2);
 			OutputDebugString(message);
 			cudaMallocHost((void**)&cAll[i], sizeof(SocialForceClone));
-			cAll[i]->init(i, cloneParams);
+			cAll[i]->init(i, cloneParams, cloneIdArray);
 		}
 
 		initRootClone(cAll[rootCloneId], cAll[rootCloneId]->selfDev);
@@ -436,6 +449,7 @@ public:
 	void stepApp(){
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
+		
 		/*
 		proc(0, 1, 0, "g1");
 		proc(0, 2, 0, "g1");
@@ -443,6 +457,8 @@ public:
 		proc(0, 6, 0, "g1");
 		proc(0, 9, 0, "g1");
 		proc(0, 18, 0, "g1");
+
+		cudaDeviceSynchronize();
 
 		proc(1, 4, 0, "g1");
 		proc(1, 7, 0, "g1");
@@ -457,6 +473,8 @@ public:
 		proc(6, 15, 0, "g1");
 		proc(6, 24, 0, "g1");
 
+		cudaDeviceSynchronize();
+
 		proc(4, 13, 0, "g1");
 		proc(4, 22, 0, "g1");
 		proc(7, 16, 0, "g1");
@@ -466,6 +484,7 @@ public:
 		proc(8, 17, 0, "g1");
 		proc(8, 26, 0, "g1");
 		*/
+		
 		
 		
 #pragma omp parallel num_threads(6) 
@@ -512,6 +531,7 @@ public:
 			case 7: proc(8, 26, 0, "g1"); break;
 			}
 		}
+
 
 		//cudaDeviceSynchronize();
 		printf("\n");

@@ -12,7 +12,9 @@
 //#include "SocialForce_3.h" // analyze weight with 4 * 4 room configuration
 //#include "SocialForce_6.h" // updated neigbor searching strategy
 //#include "SocialForceGPU.h"
-#include "SocialForce_8.h"
+//#include "SocialForce_8.h"	// previous entire parameter exploration strategy
+//#include "SocialForce_7.h"		// new strategy old scenario
+#include "SocialForceGPU2.h"
 
 extern "C" void runTest();
 

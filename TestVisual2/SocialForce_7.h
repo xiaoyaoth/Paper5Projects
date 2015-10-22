@@ -921,22 +921,10 @@ public:
 		delete mstSet;
 		delete key;
 	}
-	void stepApp0(bool o) {
-		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
-		if (stepCount < 1000 && o)
-			cAll[rootCloneId]->output(stepCount, "s0");
-		cAll[rootCloneId]->swap();
-	}
-	void stepApp1(bool o) {
-		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
-		proc(0, 1, o, "s1");
-		for (int i = 0; i < totalClone; i++)
-			cAll[i]->swap();
-	}
 
-	void stepApp(){
+	void stepApp0(){
+		// exp2. tree structure, MST.
+
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
 		
@@ -965,7 +953,85 @@ public:
 		proc(5, 14, 0, "g1");
 		proc(5, 23, 0, "g1");
 		proc(8, 17, 0, "g1");
-		proc(8, 26, 0, "g1");/**/
+		proc(8, 26, 1, "g1");/**/
+
+		//cudaDeviceSynchronize();
+		printf("\n");
+		for (int i = 0; i < totalClone; i++)
+			cAll[i]->swap();
+	}
+	void stepApp1() {
+		// exp2. tree structure, flat tree.
+		stepCount++;
+		cAll[rootCloneId]->step(stepCount);
+
+		proc(0, 1, 0, "g1");
+		proc(0, 2, 0, "g1");
+		proc(0, 3, 0, "g1");
+		proc(0, 6, 0, "g1");
+		proc(0, 9, 0, "g1");
+		proc(0, 18, 0, "g1");
+
+		proc(0, 4, 0, "g1");
+		proc(0, 7, 0, "g1");
+		proc(0, 10, 0, "g1");
+		proc(0, 19, 0, "g1");
+		proc(0, 5, 0, "g1");
+		proc(0, 8, 0, "g1");
+
+		proc(0, 11, 0, "g1");
+		proc(0, 20, 0, "g1");
+		proc(0, 12, 0, "g1");
+		proc(0, 21, 0, "g1");
+		proc(0, 15, 0, "g1");
+		proc(0, 24, 0, "g1");
+
+		proc(0, 13, 0, "g1");
+		proc(0, 22, 0, "g1");
+		proc(0, 16, 0, "g1");
+		proc(0, 25, 0, "g1");
+		proc(0, 14, 0, "g1");
+
+		proc(0, 23, 0, "g1");
+		proc(0, 17, 0, "g1");
+		proc(0, 26, 1, "g1");/**/
+
+		//cudaDeviceSynchronize();
+		printf("\n");
+		for (int i = 0; i < totalClone; i++)
+			cAll[i]->swap();
+	}
+	void stepApp() {
+		// exp2. tree structure, tall tree.
+		stepCount++;
+		cAll[rootCloneId]->step(stepCount);
+
+		proc(0, 1, 0, "g1");
+		proc(1, 2, 0, "g1");
+		proc(2, 3, 0, "g1");
+		proc(3, 4, 0, "g1");
+		proc(4, 5, 0, "g1");
+		proc(5, 6, 0, "g1");
+		proc(6, 7, 0, "g1");
+		proc(7, 8, 0, "g1");
+		proc(8, 9, 0, "g1");
+		proc(9, 10, 0, "g1");
+		proc(10, 11, 0, "g1");
+		proc(11, 12, 0, "g1");
+		proc(12, 13, 0, "g1");
+		proc(13, 14, 0, "g1");
+		proc(14, 15, 0, "g1");
+		proc(15, 16, 0, "g1");
+		proc(16, 17, 0, "g1");
+		proc(17, 18, 0, "g1");
+		proc(18, 19, 0, "g1");
+		proc(19, 20, 0, "g1");
+		proc(20, 21, 0, "g1");
+		proc(21, 22, 0, "g1");
+		proc(22, 23, 0, "g1");
+		proc(23, 24, 0, "g1");
+		proc(24, 25, 0, "g1");
+		proc(25, 26, 1, "g1");/**/
 
 		//cudaDeviceSynchronize();
 		printf("\n");

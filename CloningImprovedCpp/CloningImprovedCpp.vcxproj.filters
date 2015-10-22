@@ -31,5 +31,8 @@
     <CudaCompile Include="..\TestVisual2\kernel.cu">
       <Filter>Source Files</Filter>
     </CudaCompile>
+    <CudaCompile Include="..\TestVisual2\kernel_2.cu">
+      <Filter>Source Files</Filter>
+    </CudaCompile>
   </ItemGroup>
 </Project>

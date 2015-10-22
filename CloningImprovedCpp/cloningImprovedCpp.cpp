@@ -1,4 +1,4 @@
-#include "../TestVisual2/SocialForce_8.h"
+#include "../TestVisual2/SocialForceGPU2.h"
 #include <iostream>
 
 using namespace std;
@@ -26,12 +26,12 @@ double GetCounter()
 
 int main(int argc, char **argv) {
 	fstream fout;
-	fout.open("time_4rooms_opt2.txt", fstream::out);
+	fout.open("time_4rooms_3.concurrency_tree.txt", fstream::out);
 
 	SocialForceSimApp app1;
 	app1.initSimClone();
 	StartCounter();
-	for (int i = 0; i < 500; i++) {
+	for (int i = 0; i < 1000; i++) {
 		cout << i << " ";
 		app1.stepApp();
 		//fout << i / 4 << "\t";
@@ -42,46 +42,5 @@ int main(int argc, char **argv) {
 	}
 	cout << "step1: " << (GetCounter()) << endl;
 	fout.close();
-	return 0;
-}
-
-int main1(int argc, char **argv) {
-	
-	fstream fout;
-	fout.open("time.txt", fstream::out);
-
-	DWORD st, et;
-	st = GetTickCount();
-	SocialForceSimApp app1;
-	app1.initSimClone();
-	for (int i = 0; i < 100; i++) {
-		app1.stepApp0(0);
-		fout << GetTickCount() << endl;
-	}
-	et = GetTickCount();
-	cout <<"step1: " << (et - st) << endl;
-
-	fout << endl;
-	st = GetTickCount();
-	SocialForceSimApp app2;
-	app2.initSimClone();
-	for (int i = 0; i < 100; i++) {
-		app2.stepApp0(0);
-		fout << GetTickCount() << endl;
-	}
-	et = GetTickCount();
-	cout << "step2: " << (et - st) << endl;
-
-	fout << endl;
-	st = GetTickCount();
-	SocialForceSimApp app3;
-	app3.initSimClone();
-	for (int i = 0; i < 100; i++) {
-		app3.stepApp0(0);
-		fout << GetTickCount() << endl;
-	}
-	et = GetTickCount();
-	cout << "step3: " << (et - st) << endl;
-
 	return 0;
 }
