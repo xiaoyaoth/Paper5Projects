@@ -1,5 +1,7 @@
-#include "../TestVisual2/SocialForceGPU2.h"
+#include "../TestVisual2/SocialForce_7.h"
 #include <iostream>
+
+//kernel_4_exp3_concurrency is used for experiment
 
 using namespace std;
 
@@ -26,7 +28,7 @@ double GetCounter()
 
 int main(int argc, char **argv) {
 	fstream fout;
-	fout.open("time_4rooms_3.concurrency_tree.txt", fstream::out);
+	fout.open("time_27_clones.txt", fstream::out);
 
 	SocialForceSimApp app1;
 	app1.initSimClone();

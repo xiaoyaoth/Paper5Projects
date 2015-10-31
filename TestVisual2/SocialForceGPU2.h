@@ -161,7 +161,7 @@ namespace util {
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 32
+#define NUM_CAP 1024
 #define NUM_PARAM 3
 #define NUM_STEP 500
 #define NUM_GOAL 3
@@ -370,7 +370,7 @@ public:
 };
 
 // original tree version
-class SocialForceSimApp0 {
+class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
 	int paintId = 0;
@@ -489,7 +489,7 @@ public:
 	}
 };
 // all flat version
-class SocialForceSimApp {
+class SocialForceSimApp2 {
 public:
 	SocialForceClone **cAll;
 	int paintId = 0;
@@ -543,61 +543,31 @@ public:
 			cAll[i]->init(i, cloneParams, cloneIdArray);
 		}
 
-		initRootClone(cAll[rootCloneId], cAll[rootCloneId]->selfDev);
-		hookPointerAndData(cAll[rootCloneId]->context, cAll[rootCloneId]->apHost->agentArray, NUM_CAP);
+		for (int i = 0; i < totalClone; i++) {
+			initRootClone(cAll[i], cAll[i]->selfDev);
+			hookPointerAndData(cAll[i]->context, cAll[i]->apHost->agentArray, NUM_CAP);
+		}
 
 		mst();
 
 		return EXIT_SUCCESS;
 	}
-	void stepApp5(bool o) {
-		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
-		for (int i = 1; i < totalClone; i++)
-			proc(cloneTree[0][i], i, 0, "s5");
-		for (int j = 0; j < totalClone; j++) {
-			cAll[j]->swap();
-		}
-	}
-	void stepApp6(bool o) {
-		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
-		for (int i = 1; i < totalClone; i++)
-			proc(i - 1, i, 0, "s6");
-		for (int j = 0; j < totalClone; j++) {
-			cAll[j]->swap();
-		}
-	}
 	void stepApp(){
 		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
-
-#pragma omp parallel num_threads(3) 
+#pragma omp parallel num_threads(8) 
 		{
 			int tid = omp_get_thread_num();
 			switch (tid) {
-			case 0: proc(0, 1, 0, "g1"); break;
-			case 1: proc(0, 2, 0, "g1"); break;
-			case 2: proc(0, 4, 0, "g1"); break;
+			case 0:	cAll[0]->step(stepCount); break;
+			case 1:	cAll[1]->step(stepCount); break;
+			case 2:	cAll[2]->step(stepCount); break;
+			case 3:	cAll[3]->step(stepCount); break;
+			case 4:	cAll[4]->step(stepCount); break;
+			case 5:	cAll[5]->step(stepCount); break;
+			case 6:	cAll[6]->step(stepCount); break;
+			case 7:	cAll[7]->step(stepCount); break;
 			}
 		}
-#pragma omp parallel num_threads(3) 
-		{
-			int tid = omp_get_thread_num();
-			switch (tid) {
-			case 0: proc(1, 3, 0, "g1"); break;
-			case 1: proc(1, 5, 0, "g1"); break;
-			case 2: proc(2, 6, 0, "g1"); break;
-			}
-		}
-#pragma omp parallel num_threads(1) 
-		{
-			int tid = omp_get_thread_num();
-			switch (tid) {
-			case 0: proc(3, 7, 0, "g1"); break;
-			}
-		}
-
 
 		//cudaDeviceSynchronize();
 		printf("\n");

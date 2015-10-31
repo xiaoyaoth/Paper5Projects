@@ -12,9 +12,11 @@
 //#include "SocialForce_3.h" // analyze weight with 4 * 4 room configuration
 //#include "SocialForce_6.h" // updated neigbor searching strategy
 //#include "SocialForceGPU.h"
-//#include "SocialForce_8.h"	// previous entire parameter exploration strategy
+//#include "SocialForce_8.h"		// previous entire parameter exploration strategy with flags
 //#include "SocialForce_7.h"		// new strategy old scenario
-#include "SocialForceGPU2.h"
+//#include "SocialForce_5.h"		// two obstacle scenario
+#include "SocialForce_9.h"		// exp5 complex scenario
+//#include "SocialForceGPU2.h"
 
 extern "C" void runTest();
 
@@ -268,18 +270,17 @@ void CTestVisual2Dlg::myDraw()
 	}
 
 	// draw gate 
-	/*
 	for (int i = 0; i < NUM_PARAM; i++) {
-	CPen p(PS_SOLID, 5, RGB(0, 0, 0));
-	_memDC.SelectObject(p);
-	double x = c->gates[i].sx / ENV_DIM * screenWidth;
-	double y = c->gates[i].sy / ENV_DIM * screenHeight;
-	_memDC.MoveTo(x, y);
-	x = c->gates[i].ex / ENV_DIM * screenWidth;
-	y = c->gates[i].ey / ENV_DIM * screenHeight;
-	_memDC.LineTo(x, y);
+		CPen p(PS_SOLID, 5, RGB(0, 0, 0));
+		_memDC.SelectObject(p);
+		double x = c->gates[i].sx / ENV_DIM * screenWidth;
+		double y = c->gates[i].sy / ENV_DIM * screenHeight;
+		_memDC.MoveTo(x, y);
+		x = c->gates[i].ex / ENV_DIM * screenWidth;
+		y = c->gates[i].ey / ENV_DIM * screenHeight;
+		_memDC.LineTo(x, y);
 	}
-	*/
+	
 
 	// draw agent
 	for (int i = 0; i < NUM_CAP; i++) {
@@ -297,7 +298,7 @@ void CTestVisual2Dlg::myDraw()
 		_memDC.SelectObject(b);
 		double x = loc.x / ENV_DIM * screenWidth;
 		double y = loc.y / ENV_DIM * screenHeight;
-		_memDC.Ellipse(x - 3, y - 3, x + 3, y + 3);
+		_memDC.Ellipse(x - 5, y - 5, x + 5, y + 5);
 
 		// draw agent id;
 //		CFont font;

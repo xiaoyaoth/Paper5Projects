@@ -5,25 +5,19 @@
 #include <algorithm>
 #include <fstream>
 #include <iomanip>
-#include <iostream>
 #include "inc\helper_math.h"
 #include <random>
 
-/* FOCUS: test GPU neighbor searching strategy on CPU */
-
 using namespace std;
-
-fstream fout1;
-int g_stepCount = 0;
 
 #define DIST(ax, ay, bx, by) sqrt((ax-bx)*(ax-bx)+(ay-by)*(ay-by))
 
 /*
 struct double2 {
-float x;
-float y;
-double2(float xx, float yy) : x(xx), y(yy) {}
-double2(){};
+	float x;
+	float y;
+	double2(float xx, float yy) : x(xx), y(yy) {}
+	double2(){};
 };*/
 struct obstacleLine
 {
@@ -52,10 +46,10 @@ struct obstacleLine
 	double pointToLineDist(double2 loc)
 	{
 		double a, b;
-		return this->pointToLineDist(loc, a, b, 0);
+		return this->pointToLineDist(loc, a, b);
 	}
 
-	double pointToLineDist(double2 loc, double &crx, double &cry, int id)
+	double pointToLineDist(double2 loc, double &crx, double &cry)
 	{
 		double d = DIST(sx, sy, ex, ey);
 		double t0 = ((ex - sx) * (loc.x - sx) + (ey - sy) * (loc.y - sy)) / (d * d);
@@ -75,16 +69,10 @@ struct obstacleLine
 		crx = sx + t0 * (ex - sx);
 		cry = sy + t0 * (ey - sy);
 
-		if (g_stepCount == 1 && id == 51) {
-			fout1 << "sx:\t" << setprecision(20) << sx << endl;
-			fout1 << "sy:\t" << setprecision(20) << sy << endl;
-			fout1 << "ex:\t" << setprecision(20) << ex << endl;
-			fout1 << "ey:\t" << setprecision(20) << ey << endl;
-			fout1 << "crx:\t" << setprecision(20) << crx << endl;
-			fout1 << "cry:\t" << setprecision(20) << cry << endl;
-			fout1 << "t0:\t" << setprecision(20) << t0 << endl;
-			fout1 << "d:\t" << setprecision(20) << d << endl;
-		}
+		//if (stepCount == 0 && id == 263) {
+		//	printf("cross: (%f, %f)\n", crx, cry);
+		//	printf("t0: %f, d: %f\n", t0, d);
+		//}
 
 		return d;
 	}
@@ -134,6 +122,8 @@ inline double2 operator-(const double2& a, const double2& b)
 	return make_double2(a.x - b.x, a.y - b.y);
 }
 
+int g_stepCount = 0;
+
 #define	tao 0.5
 #define	A 2000
 #define	B 0.1
@@ -141,16 +131,16 @@ inline double2 operator-(const double2& a, const double2& b)
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 128
-#define NUM_PARAM 3
+#define NUM_CAP 32
+#define NUM_PARAM 256
 #define NUM_STEP 500
 #define NUM_GOAL 3
-#define ENV_DIM 128
-#define NUM_CELL 8
-#define CELL_DIM 16
+#define ENV_DIM 64
+#define NUM_CELL 16
+#define CELL_DIM 4
 #define RADIUS_I 6
 
-#define NUM_WALLS 10
+#define NUM_WALLS 4
 
 default_random_engine randGen;
 uniform_real_distribution<double> distr(0.0, 1.0);
@@ -190,7 +180,7 @@ public:
 	void computeSocialForceRoom(SocialForceAgentData &dataLocal, double2 &fSum);
 	void chooseNewGoal(const double2 &newLoc, double epsilon, double2 &newGoal);
 	void step();
-	void init(SocialForceClone* c, int idx);
+	void init(int idx);
 	void initNewClone(SocialForceAgent *agent, SocialForceClone *clone);
 };
 class AgentPool {
@@ -230,89 +220,19 @@ public:
 	}
 };
 
-namespace NeighborModule {
-	int zcode(int x, int y) {
-		return x * NUM_CELL + y;
-		x &= 0x0000ffff;					// x = ---- ---- ---- ---- fedc ba98 7654 3210
-		y &= 0x0000ffff;					// x = ---- ---- ---- ---- fedc ba98 7654 3210
-		x = (x ^ (x << 8)) & 0x00ff00ff; // x = ---- ---- fedc ba98 ---- ---- 7654 3210
-		y = (y ^ (y << 8)) & 0x00ff00ff; // x = ---- ---- fedc ba98 ---- ---- 7654 3210
-		y = (y ^ (y << 4)) & 0x0f0f0f0f; // x = ---- fedc ---- ba98 ---- 7654 ---- 3210
-		x = (x ^ (x << 4)) & 0x0f0f0f0f; // x = ---- fedc ---- ba98 ---- 7654 ---- 3210
-		y = (y ^ (y << 2)) & 0x33333333; // x = --fe --dc --ba --98 --76 --54 --32 --10
-		x = (x ^ (x << 2)) & 0x33333333; // x = --fe --dc --ba --98 --76 --54 --32 --10
-		y = (y ^ (y << 1)) & 0x55555555; // x = -f-e -d-c -b-a -9-8 -7-6 -5-4 -3-2 -1-0
-		x = (x ^ (x << 1)) & 0x55555555; // x = -f-e -d-c -b-a -9-8 -7-6 -5-4 -3-2 -1-0
-		return x | (y << 1);
-	}
-
-	int zcode(const double2 &loc) {
-		int ix = loc.x / (ENV_DIM / NUM_CELL);
-		int iy = loc.y / (ENV_DIM / NUM_CELL);
-		return zcode(ix, iy);
-	}
-
-	int zcode(SocialForceAgent *agent) {
-		return zcode(agent->data.loc);
-	}
-
-	void swap(SocialForceAgent** agentPtrs, int a, int b) {
-		SocialForceAgent* temp = agentPtrs[a];
-		agentPtrs[a] = agentPtrs[b];
-		agentPtrs[b] = temp;
-	}
-
-	void quickSortByAgentLoc(SocialForceAgent** agentPtrs, int l, int r) {
-		if (l == r)
-			return;
-		int pi = l + rand() % (r - l);
-		swap(agentPtrs, l, pi);
-		SocialForceAgent* pivot = agentPtrs[l];
-
-		int i = l + 1, j = l + 1;
-		for (; j < r; j++) {
-			if (zcode(agentPtrs[j]) < zcode(pivot)) {
-				swap(agentPtrs, i, j);
-				i++;
-			}
-		}
-		swap(agentPtrs, l, i - 1);
-		quickSortByAgentLoc(agentPtrs, l, i - 1);
-		quickSortByAgentLoc(agentPtrs, i, r);
-	}
-
-	void setCidStartEnd(SocialForceAgent** contextSorted, int* &cidStarts, int* &cidEnds, int n) {
-		memset(cidStarts, 0xff, sizeof(int) * NUM_CELL * NUM_CELL);
-		memset(cidEnds, 0xff, sizeof(int) * NUM_CELL * NUM_CELL);
-		int prevCid = zcode(contextSorted[0]->data.loc);
-		cidStarts[prevCid] = 0;
-		for (int i = 1; i < n; i++) {
-			int cid = zcode(contextSorted[i]->data.loc);
-			if (cid != prevCid) {
-				cidStarts[cid] = i;
-				cidEnds[prevCid] = i;
-				prevCid = cid;
-			}
-		}
-		cidEnds[prevCid] = n;
-	}
-}
-
 class SocialForceClone {
 public:
 	AgentPool *ap;
 	int numElem;
 	SocialForceAgent **context;
-	SocialForceAgent **contextSorted;
-	int *cidStarts, *cidEnds;
 	bool *cloneFlag;
 	int cloneParams[NUM_PARAM];
 	obstacleLine walls[NUM_WALLS];
 	obstacleLine gates[NUM_PARAM];
 	bool takenMap[NUM_CELL * NUM_CELL];
-
+	
 	uchar4 color;
-	uint cloneid;
+	int cloneid;
 	int parentCloneid;
 
 	fstream fout;
@@ -321,38 +241,40 @@ public:
 		numElem = 0;
 		cloneid = id;
 		ap = new AgentPool(NUM_CAP);
+		//agents = new SocialForceAgent[NUM_CAP];
 		context = new SocialForceAgent*[NUM_CAP];
-		contextSorted = new SocialForceAgent*[NUM_CAP];
-		cidStarts = new int[NUM_CELL * NUM_CELL];
-		cidEnds = new int[NUM_CELL * NUM_CELL];
 		cloneFlag = new bool[NUM_CAP];
 		memset(context, 0, sizeof(void*) * NUM_CAP);
-		memset(contextSorted, 0, sizeof(void*) * NUM_CAP);
 		memset(cloneFlag, 0, sizeof(bool) * NUM_CAP);
 		color.x = rand() % 255; color.y = rand() % 255; color.z = rand() % 255;
 
-		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
+		double ps = 0.025; double dd = 0.25;
+		walls[0].init(0.05 * ENV_DIM, 0.10 * ENV_DIM, 0.05 * ENV_DIM, 0.90 * ENV_DIM);
+		walls[1].init(0.95 * ENV_DIM, 0.10 * ENV_DIM, 0.95 * ENV_DIM, 0.90 * ENV_DIM);
+		walls[2].init(0.10 * ENV_DIM, 0.05 * ENV_DIM, 0.90 * ENV_DIM, 0.05 * ENV_DIM);
+		walls[3].init(0.10 * ENV_DIM, 0.95 * ENV_DIM, 0.90 * ENV_DIM, 0.95 * ENV_DIM);
+		
+		for (int i = 0; i < NUM_PARAM; i++) {
+			cloneParams[0] = 0;
+			gates[i].init(0, 0, 0, 0);
+		}
 
-		walls[0].init(0.1 * ENV_DIM, 0.09 * ENV_DIM, 0.1 * ENV_DIM, 0.91 * ENV_DIM);
-		walls[1].init(0.09 * ENV_DIM, 0.1 * ENV_DIM, 0.91 * ENV_DIM, 0.1 * ENV_DIM);
-		walls[2].init(0.9 * ENV_DIM, 0.09 * ENV_DIM, 0.9 * ENV_DIM, 0.3 * ENV_DIM);
-		walls[3].init(0.9 * ENV_DIM, 0.3 * ENV_DIM, 0.9 * ENV_DIM, 0.91 * ENV_DIM);
-		walls[4].init(0.09 * ENV_DIM, 0.9 * ENV_DIM, 0.91 * ENV_DIM, 0.9 * ENV_DIM);
-		walls[5].init(0.5 * ENV_DIM, 0.7 * ENV_DIM, 0.5 * ENV_DIM, 0.91 * ENV_DIM);
-		walls[6].init(0.09 * ENV_DIM, 0.5 * ENV_DIM, 0.3 * ENV_DIM, 0.5 * ENV_DIM);
-		walls[7].init(0.5 * ENV_DIM, 0.09 * ENV_DIM, 0.5 * ENV_DIM, 0.3 * ENV_DIM);
-		walls[8].init(0.5 * ENV_DIM, 0.3 * ENV_DIM, 0.5 * ENV_DIM, 0.7 * ENV_DIM);
-		walls[9].init(0.3 * ENV_DIM, 0.5 * ENV_DIM, 0.91 * ENV_DIM, 0.5 * ENV_DIM);
-
-		walls[9].sx += cloneParams[1]; walls[6].ex -= cloneParams[1];
-		walls[7].ey -= cloneParams[2]; walls[8].sy += cloneParams[2];
-		walls[8].ey -= cloneParams[0]; walls[5].sy += cloneParams[0];
-
-		gates[0].init(0.5 * ENV_DIM, 0.7 * ENV_DIM - cloneParams[0], 0.5 * ENV_DIM, 0.7 * ENV_DIM + cloneParams[0]);
-		gates[1].init(0.3 * ENV_DIM - cloneParams[1], 0.5 * ENV_DIM, 0.3 * ENV_DIM + cloneParams[1], 0.5 * ENV_DIM);
-		gates[2].init(0.5 * ENV_DIM, 0.3 * ENV_DIM - cloneParams[2], 0.5 * ENV_DIM, 0.3 * ENV_DIM + cloneParams[2]);
-
-
+		double delta = 0.022;
+		for (int ixi = 0; ixi < 8; ixi++) {
+			for (int iyi = 0; iyi < 8; iyi++) {
+				int i = ixi * 8 + iyi;
+				double ix = (15. + (double)ixi * 10) / 100;
+				double iy = (15. + (double)iyi * 10) / 100;
+				gates[4 * i].init((ix - delta) * ENV_DIM, (iy - delta) * ENV_DIM, (ix - delta) * ENV_DIM, (iy + delta) * ENV_DIM);
+				gates[4 * i + 1].init((ix + delta) * ENV_DIM, (iy - delta) * ENV_DIM, (ix + delta) * ENV_DIM, (iy + delta) * ENV_DIM);
+				gates[4 * i + 2].init((ix - delta) * ENV_DIM, (iy - delta) * ENV_DIM, (ix + delta) * ENV_DIM, (iy - delta) * ENV_DIM);
+				gates[4 * i + 3].init((ix - delta) * ENV_DIM, (iy + delta) * ENV_DIM, (ix + delta) * ENV_DIM, (iy + delta) * ENV_DIM);
+			}
+		}
+		/*gates[0].init(0, 0, 0, 0);
+		gates[1].init(0, 0, 0, 0);
+		gates[2].init(0, 0, 0, 0);
+		gates[3].init(0, 0, 0, 0);*/
 	}
 	void step(int stepCount);
 	void alterGate(int stepCount);
@@ -369,7 +291,7 @@ public:
 			fout.open(filename, fstream::out);
 		else
 			fout.open(filename, fstream::app);
-		fout << "========== stepCount: " << stepCount << " ===========" << endl;
+		fout << "========== stepCount: " << stepCount << " ==========="<<endl;
 		int outprec = 20;
 		for (int i = 0; i < NUM_CAP; i++) {
 			fout << context[i]->contextId << " [";
@@ -394,14 +316,14 @@ public:
 			fout.open(filename, fstream::out);
 		else
 			fout.open(filename, fstream::app);
-		fout << numElem << endl;
+		fout << numElem<<endl;
 		fout.close();
 	}
 };
 double SocialForceAgent::correctCrossBoader(double val, double limit)
 {
 	if (val >= limit)
-		return limit - 0.001;
+		return limit-0.01;
 	else if (val < 0)
 		return 0;
 	return val;
@@ -443,74 +365,26 @@ void SocialForceAgent::computeIndivSocialForceRoom(const SocialForceAgentData &m
 	fSum.x += fnijx + fkgx;
 	fSum.y += fnijy + fkgy;
 }
-
 void SocialForceAgent::computeForceWithWall(const SocialForceAgentData &dataLocal, obstacleLine &wall, const int &cMass, double2 &fSum) {
-	const double2 &loc = dataLocal.loc;
-	if (g_stepCount == 1 && this->contextId == 51) {
-		fout1 << "wall.sx:\t" << setprecision(20) << wall.sx << endl;
-		fout1 << "wall.sy:\t" << setprecision(20) << wall.sy << endl;
-		fout1 << "wall.ex:\t" << setprecision(20) << wall.ex << endl;
-		fout1 << "wall.ey:\t" << setprecision(20) << wall.ey << endl;
-		fout1 << "loc.x:\t" << setprecision(20) << loc.x << endl;
-		fout1 << "loc.y:\t" << setprecision(20) << loc.y << endl;
-		fout1 << "fSum.x:\t" << setprecision(20) << fSum.x << endl;
-		fout1 << "fSum.y:\t" << setprecision(20) << fSum.y << endl;
-	}
-
 	double2 wl = make_double2(wall.ex - wall.sx, wall.ey - wall.sy);
 	if (length(wl) == 0) return;
 	double diw, crx, cry;
+	const double2 &loc = dataLocal.loc;
 
-	diw = wall.pointToLineDist(loc, crx, cry, this->contextId);
-
-	if (g_stepCount == 1 && this->contextId == 51) {
-		fout1 << "crx:\t" << setprecision(20) << crx << endl;
-		fout1 << "cry:\t" << setprecision(20) << cry << endl;
-	}
-
-
-	if (g_stepCount == 1 && this->contextId == 51) {
-		fout1 << "diw:\t" << setprecision(20) << diw << endl;
-	}
-
+	diw = wall.pointToLineDist(loc, crx, cry);
 	double virDiw = DIST(loc.x, loc.y, crx, cry);
-
-	if (g_stepCount == 1 && this->contextId == 51) {
-		fout1 << "virDiw:\t" << setprecision(20) << virDiw << endl;
-	}
 
 	if (virDiw == 0)
 		return;
 
 	double niwx = (loc.x - crx) / virDiw;
 	double niwy = (loc.y - cry) / virDiw;
-
-	if (g_stepCount == 1 && this->contextId == 51) {
-		fout1 << "niwx:\t" << setprecision(20) << niwx << endl;
-		fout1 << "niwy:\t" << setprecision(20) << niwy << endl;
-	}
-
 	double drw = dataLocal.mass / cMass - diw;
-
-	if (g_stepCount == 1 && this->contextId == 51) {
-		fout1 << "drw:\t" << setprecision(20) << drw << endl;
-	}
-
 	double fiw1 = A * exp(drw / B);
-
-	if (g_stepCount == 1 && this->contextId == 51) {
-		fout1 << "fiw1:\t" << setprecision(20) << fiw1 << endl;
-	}
-
 	if (drw > 0)
 		fiw1 += k1 * drw;
 	double fniwx = fiw1 * niwx;
 	double fniwy = fiw1 * niwy;
-
-	if (g_stepCount == 1 && this->contextId == 51) {
-		fout1 << "fniwx:\t" << setprecision(20) << fniwx << endl;
-		fout1 << "fniwy:\t" << setprecision(20) << fniwy << endl;
-	}
 
 	double fiwKgx = 0, fiwKgy = 0;
 	if (drw > 0)
@@ -520,19 +394,8 @@ void SocialForceAgent::computeForceWithWall(const SocialForceAgentData &dataLoca
 		fiwKgy = fiwKg * niwx;
 	}
 
-	if (g_stepCount == 1 && this->contextId == 51) {
-		fout1 << "fiwKgx:\t" << setprecision(20) << fiwKgx << endl;
-		fout1 << "fiwKgy:\t" << setprecision(20) << fiwKgy << endl;
-	}
-
 	fSum.x += fniwx - fiwKgx;
 	fSum.y += fniwy - fiwKgy;
-
-	if (g_stepCount == 1 && this->contextId == 51) {
-		fout1 << "fSum.x:\t" << setprecision(20) << fSum.x << endl;
-		fout1 << "fSum.y:\t" << setprecision(20) << fSum.y << endl;
-		fout1 << endl;
-	}
 }
 void SocialForceAgent::computeWallImpaction(const SocialForceAgentData &dataLocal, obstacleLine &wall, const double2 &newVelo, const double &tick, double &mint){
 	double crx, cry, tt;
@@ -576,71 +439,31 @@ void SocialForceAgent::computeSocialForceRoom(SocialForceAgentData &dataLocal, d
 	double ds = 0;
 
 	int neighborCount = 0;
-	int cxmin = (dataLocal.loc.x - RADIUS_I) / (ENV_DIM / NUM_CELL);
-	int cxmax = (dataLocal.loc.x + RADIUS_I) / (ENV_DIM / NUM_CELL);
-	int cymin = (dataLocal.loc.y - RADIUS_I) / (ENV_DIM / NUM_CELL);
-	int cymax = (dataLocal.loc.y + RADIUS_I) / (ENV_DIM / NUM_CELL);
-	cxmin = max(cxmin, 0);
-	cymin = max(cymin, 0);
-	cxmax = min(cxmax, NUM_CELL - 1);
-	cymax = min(cymax, NUM_CELL - 1);
-
-	/*
-	for (int ix = cxmin; ix <= cxmax; ix++) {
-	for (int iy = cymin; iy <= cymax; iy++) {
-	int cid = NeighborModule::zcode(ix, iy);
-	int cidStart = myClone->cidStarts[cid];
-	int cidEnd = myClone->cidEnds[cid];
-	for (int i = cidStart; i < cidEnd; i++) {
-	SocialForceAgent *other = myClone->contextSorted[i];
-	SocialForceAgentData otherData = other->data;
-	ds = length(otherData.loc - dataLocal.loc);
-	if (ds < 6 && ds > 0) {
-	neighborCount++;
-	computeIndivSocialForceRoom(dataLocal, otherData, fSum);
-	}
-	}
-	}
-	}
-	*/
+	wchar_t message[128];
 
 	for (int i = 0; i < NUM_CAP; i++) {
 		SocialForceAgent *other = myClone->context[i];
 		SocialForceAgentData otherData = other->data;
 		ds = length(otherData.loc - dataLocal.loc);
+		if (contextId == 10 && g_stepCount == 70 && this->myClone->cloneid == 1) {
+			swprintf_s(message, 128, L"%d: %.4f, %.4f, %.4f\n", 
+				other->contextId, otherData.loc.x, otherData.loc.y, ds);
+			OutputDebugString(message);
+		}
 		if (ds < 6 && ds > 0) {
 			neighborCount++;
 			computeIndivSocialForceRoom(dataLocal, otherData, fSum);
 		}
 	}
-
 	dataLocal.numNeighbor = neighborCount;
 }
-__device__ void SocialForceAgent::chooseNewGoal(const double2 &newLoc, double epsilon, double2 &newGoal) {
-	double2 oldGoal = newGoal;
-	double2 center = make_double2(ENV_DIM / 2, ENV_DIM / 2);
-	if (newLoc.x < center.x && newLoc.y <= center.y) {
-		//if ((newLoc.x + epsilon >= 0.5 * ENV_DIM))	{
-		newGoal.x = 0.5 * ENV_DIM;
-		newGoal.y = 0.3 * ENV_DIM;
-		//}
-	}
-	else if (newLoc.x <= center.x && newLoc.y > center.y) {
-		//if ((newLoc.y - epsilon <= 0.5 * ENV_DIM))	{
-		newGoal.x = 0.3 * ENV_DIM;
-		newGoal.y = 0.5 * ENV_DIM;
-		//}
-	}
-	else if (newLoc.x > center.x && newLoc.y > center.y) {
-		//if ((newLoc.x - epsilon <= 0.5 * ENV_DIM))	{
-		newGoal.x = 0.5 * ENV_DIM;
-		newGoal.y = 0.7 * ENV_DIM;
-		//}
-	}
-	else if (newLoc.x >= center.x && newLoc.y < center.y){
-		newGoal.x = 0.9 * ENV_DIM;
-		newGoal.y = 0.3 * ENV_DIM;
-	}
+void SocialForceAgent::chooseNewGoal(const double2 &newLoc, double epsilon, double2 &newGoal) {
+	if (newLoc.x < 0.30 * ENV_DIM)
+		newGoal = make_double2(0.30 * ENV_DIM, 0.20 * ENV_DIM);
+	else if (newLoc.x < 0.66 * ENV_DIM) 
+		newGoal = make_double2(0.70 * ENV_DIM, 0.80 * ENV_DIM);
+	else
+		newGoal = make_double2(ENV_DIM, 0.50 * ENV_DIM);
 }
 void SocialForceAgent::step(){
 	double cMass = 100;
@@ -651,6 +474,9 @@ void SocialForceAgent::step(){
 	const double& v0 = data.v0;
 	const double& mass = data.mass;
 
+	if (g_stepCount == 71)
+		printf("");
+
 	//compute the direction
 	double2 dvt;
 	computeDirection(data, dvt);
@@ -659,19 +485,14 @@ void SocialForceAgent::step(){
 	double2 fSum;
 	computeSocialForceRoom(data, fSum);
 
-	if (g_stepCount == 1 && this->contextId == 51) {
-		fout1.open("debug.txt", ios::out);
-	}
 	//compute force with walls and gates
 	for (int i = 0; i < NUM_WALLS; i++) {
-		if (i == 9 && g_stepCount == 1 && this->contextId == 51) {
-			cout << "";
-		}
 		obstacleLine wall = myClone->walls[i];
 		computeForceWithWall(data, wall, cMass, fSum);
 	}
-	if (g_stepCount == 1 && this->contextId == 51) {
-		fout1.close();
+	for (int i = 0; i < NUM_PARAM; i++) {
+		obstacleLine gate = myClone->gates[i];
+		computeForceWithWall(data, gate, cMass, fSum);
 	}
 
 	//sum up
@@ -697,6 +518,10 @@ void SocialForceAgent::step(){
 		obstacleLine wall = myClone->walls[i];
 		computeWallImpaction(data, wall, newVelo, tick, mint);
 	}
+	for (int i = 0; i < NUM_PARAM; i++) {
+		obstacleLine gate = myClone->gates[i];
+		computeWallImpaction(data, gate, newVelo, tick, mint);
+	}
 
 	newVelo.x *= mint;
 	newVelo.y *= mint;
@@ -705,7 +530,7 @@ void SocialForceAgent::step(){
 
 	double goalTemp = goal.x;
 
-	chooseNewGoal(newLoc, mass / cMass, newGoal);
+	//chooseNewGoal(newLoc, mass / cMass, newGoal);
 
 	newLoc.x = correctCrossBoader(newLoc.x, ENV_DIM);
 	newLoc.y = correctCrossBoader(newLoc.y, ENV_DIM);
@@ -716,19 +541,42 @@ void SocialForceAgent::step(){
 	dataCopy.velocity = newVelo;
 	dataCopy.goal = newGoal;
 }
-void SocialForceAgent::init(SocialForceClone *c, int idx) {
-	this->contextId = idx;
-	this->goalIdx = 0;
-	this->myClone = c;
-	this->myOrigin = NULL;
+bool isInRectSub(double px, double py, double rcx1, double rcy1, double rcx2, double rcy2) {
+	double xr = (px - rcx1) * (px - rcx2);
+	double yr = (py - rcy1) * (py - rcy2);
+	return (xr <= 0 && yr <= 0);
+}
+bool inRect(double &px, double &py) {
+	double delta = 0.022;
+	for (int ixi = 0; ixi < 8; ixi++) {
+		for (int iyi = 0; iyi < 8; iyi++) {
+			double ix = (15. + (double)ixi * 10) / 100;
+			double iy = (15. + (double)iyi * 10) / 100;
 
+			if (isInRectSub(px, py, (ix - delta) * ENV_DIM, (iy - delta) * ENV_DIM, (ix + delta) * ENV_DIM, (iy + delta) * ENV_DIM))
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+void SocialForceAgent::init(int idx) {
 	this->color.x = rand() % 255;
 	this->color.y = rand() % 255;
 	this->color.z = rand() % 255;
+	this->contextId = idx;
+	this->myOrigin = NULL;
 
 	SocialForceAgentData & dataLocal = this->data; //= &sfModel->originalAgents->dataArray[dataSlot];
-	dataLocal.loc.x = (0.6 + 0.2 * distr(randGen)) * ENV_DIM;
-	dataLocal.loc.y = (0.6 + 0.2 * distr(randGen)) * ENV_DIM;
+	dataLocal.agentPtr = this;
+	dataLocal.loc.x = (0.2 + 0.6 * distr(randGen)) * ENV_DIM;
+	dataLocal.loc.y = (0.2 + 0.6 * distr(randGen)) * ENV_DIM;
+
+	while (inRect(dataLocal.loc.x, dataLocal.loc.y)) {
+		dataLocal.loc.x = (0.2 + 0.6 * distr(randGen)) * ENV_DIM;
+		dataLocal.loc.y = (0.2 + 0.6 * distr(randGen)) * ENV_DIM;
+	}
 
 	dataLocal.velocity.x = 2;//4 * (this->random->uniform()-0.5);
 	dataLocal.velocity.y = 2;//4 * (this->random->uniform()-0.5);
@@ -736,8 +584,15 @@ void SocialForceAgent::init(SocialForceClone *c, int idx) {
 	dataLocal.v0 = 2;
 	dataLocal.mass = 50;
 	dataLocal.numNeighbor = 0;
-
-	dataLocal.goal = make_double2(0.5 * ENV_DIM, 0.7 * ENV_DIM);
+	//dataLocal.goal = make_double2((float)rand() / (float)RAND_MAX * ENV_DIM, (float)rand() / (float)RAND_MAX * ENV_DIM);
+	if (dataLocal.loc.x < ENV_DIM / 2 && dataLocal.loc.y < ENV_DIM / 2)
+		dataLocal.goal = make_double2(ENV_DIM * 0.05, ENV_DIM * 0.05);
+	else if (dataLocal.loc.x < ENV_DIM / 2 && dataLocal.loc.y > ENV_DIM / 2)
+		dataLocal.goal = make_double2(ENV_DIM * 0.05, ENV_DIM * 0.95);
+	else if (dataLocal.loc.x > ENV_DIM / 2 && dataLocal.loc.y < ENV_DIM / 2)
+		dataLocal.goal = make_double2(ENV_DIM * 0.95, ENV_DIM * 0.05);
+	else if (dataLocal.loc.x > ENV_DIM / 2 && dataLocal.loc.y > ENV_DIM / 2)
+		dataLocal.goal = make_double2(ENV_DIM * 0.95, ENV_DIM * 0.95);
 	this->dataCopy = dataLocal;
 }
 void SocialForceAgent::initNewClone(SocialForceAgent *parent, SocialForceClone *childClone) {
@@ -753,6 +608,7 @@ void SocialForceAgent::initNewClone(SocialForceAgent *parent, SocialForceClone *
 	this->data.agentPtr = this;
 }
 void SocialForceClone::step(int stepCount) {
+	//alterGate(stepCount);
 	for (int i = 0; i < numElem; i++)
 		ap->agentPtrArray[i]->step();
 }
@@ -764,16 +620,16 @@ void SocialForceClone::alterGate(int stepCount) {
 	}
 }
 
-// exp1 validate, cloned version (MST tree)
-// exp3 tree structure, three options in 3 stepApp functions.
-class SocialForceSimApp {
+// exp1 cloned version
+class SocialForceSimApp1 {
 public:
 	SocialForceClone **cAll;
 	int paintId = 0;
-	int totalClone = 27;
+	int totalClone = 4;
 	int &stepCount = g_stepCount;
 	int rootCloneId = 0;
 	int **cloneTree;
+	int paramWeight[NUM_PARAM];
 
 	int initSimClone() {
 		srand(0);
@@ -782,11 +638,23 @@ public:
 		cloneTree = new int*[2];
 		int j = 0;
 
+		int cloneParams[NUM_PARAM];
+		for (int i = 0; i < NUM_PARAM; i++) {
+			cloneParams[i] = 1;
+		}
+
+		paramWeight[0] = 1;
+		paramWeight[1] = 3;
+		paramWeight[2] = 1;
+		paramWeight[3] = 3;
+
 		for (int i = 0; i < totalClone; i++) {
-			int cloneParams[NUM_PARAM];
-			cloneParams[0] = i % 3 + 2;
-			cloneParams[1] = (i / 3) % 3 + 2;
-			cloneParams[2] = (i / 9) % 3 + 2;
+			for (int i = 0; i < NUM_PARAM; i++) {
+				cloneParams[i] = 1;
+			}
+			if (i == 1) cloneParams[0] = 100;
+			if (i == 2) cloneParams[1] = 100;
+			if (i == 3) { cloneParams[0] = 100; cloneParams[1] = 100; }
 			cAll[i] = new SocialForceClone(i, cloneParams);
 		}
 
@@ -797,7 +665,7 @@ public:
 			agents[i].myClone = cAll[rootCloneId];
 			agents[i].contextId = i;
 			agents[i].color = cAll[rootCloneId]->color;
-			agents[i].init(cAll[rootCloneId], i);
+			agents[i].init(i);
 			context[i] = &agents[i];
 		}
 
@@ -805,7 +673,7 @@ public:
 		for (int j = 0; j < NUM_CAP; j++)
 			cAll[rootCloneId]->cloneFlag[j] = true;
 
-		mst();
+		//mst();
 
 		return EXIT_SUCCESS;
 	}
@@ -865,11 +733,11 @@ public:
 			takenId = takenId * NUM_CELL + agent.data.loc.y / CELL_DIM;
 			childClone->takenMap[takenId] = true;
 		}
-
+		
 		// 4. perform active and passive cloning (in cloningCondition checking)
 		//for (int i = 0; i < parentClone->numElem; i++) {
 		//	SocialForceAgent *agent = parentClone->ap->agentPtrArray[i];
-		
+
 		for (int i = 0; i < NUM_CAP; i++) {
 			SocialForceAgent *agent = parentClone->context[i];
 			if (cloningCondition(agent, childClone->takenMap, parentClone, childClone)) {
@@ -897,10 +765,10 @@ public:
 
 			/*else {
 				if (childClone->cloneid == 4) {
-				swprintf_s(message, 20, L"not false: %d\n", i);
-				OutputDebugString(message);
+					swprintf_s(message, 20, L"not false: %d\n", i);
+					OutputDebugString(message);
 				}
-				}*/
+			}*/
 		}
 		childClone->numElem = childClone->ap->reorder(childClone->numElem);
 	}
@@ -914,6 +782,7 @@ public:
 		//cAll[c]->output2(stepCount, s);
 		compareAndEliminate(cAll[p], cAll[c]);
 	}
+
 	void swap(int **cloneTree, int a, int b) {
 		int t1 = cloneTree[0][a];
 		cloneTree[0][a] = cloneTree[0][b];
@@ -923,6 +792,7 @@ public:
 		cloneTree[1][a] = cloneTree[1][b];
 		cloneTree[1][b] = t1;
 	}
+
 	void quickSort(int **cloneTree, int l, int r) {
 		if (l == r)
 			return;
@@ -1002,132 +872,33 @@ public:
 		delete mstSet;
 		delete key;
 	}
-
-	void stepApp0(){
-		// exp3. tree structure, MST.
-
+	void stepApp0(bool o) {
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
-		
-		proc(0, 1, 0, "g1");
-		proc(0, 2, 0, "g1");
-		proc(0, 3, 0, "g1");
-		proc(0, 6, 0, "g1");
-		proc(0, 9, 0, "g1");
-		proc(0, 18, 0, "g1");
-		proc(1, 4, 0, "g1");
-		proc(1, 7, 0, "g1");
-		proc(1, 10, 0, "g1");
-		proc(1, 19, 0, "g1");
-		proc(2, 5, 0, "g1");
-		proc(2, 8, 0, "g1");
-		proc(2, 11, 0, "g1");
-		proc(2, 20, 0, "g1");
-		proc(3, 12, 0, "g1");
-		proc(3, 21, 0, "g1");
-		proc(6, 15, 0, "g1");
-		proc(6, 24, 0, "g1");
-		proc(4, 13, 0, "g1");
-		proc(4, 22, 0, "g1");
-		proc(7, 16, 0, "g1");
-		proc(7, 25, 0, "g1");
-		proc(5, 14, 0, "g1");
-		proc(5, 23, 0, "g1");
-		proc(8, 17, 0, "g1");
-		proc(8, 26, 0, "exp1_cloned");/**/
-
-		//cudaDeviceSynchronize();
-		for (int i = 0; i < totalClone; i++)
-			cAll[i]->swap();
-	}
-	void stepApp1() {
-		// exp3. tree structure, flat tree.
-		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
-
-		proc(0, 1, 0, "g1");
-		proc(0, 2, 0, "g1");
-		proc(0, 3, 0, "g1");
-		proc(0, 6, 0, "g1");
-		proc(0, 9, 0, "g1");
-		proc(0, 18, 0, "g1");
-
-		proc(0, 4, 0, "g1");
-		proc(0, 7, 0, "g1");
-		proc(0, 10, 0, "g1");
-		proc(0, 19, 0, "g1");
-		proc(0, 5, 0, "g1");
-		proc(0, 8, 0, "g1");
-
-		proc(0, 11, 0, "g1");
-		proc(0, 20, 0, "g1");
-		proc(0, 12, 0, "g1");
-		proc(0, 21, 0, "g1");
-		proc(0, 15, 0, "g1");
-		proc(0, 24, 0, "g1");
-
-		proc(0, 13, 0, "g1");
-		proc(0, 22, 0, "g1");
-		proc(0, 16, 0, "g1");
-		proc(0, 25, 0, "g1");
-		proc(0, 14, 0, "g1");
-
-		proc(0, 23, 0, "g1");
-		proc(0, 17, 0, "g1");
-		proc(0, 26, 0, "g1");/**/
-
-		//cudaDeviceSynchronize();
-		for (int i = 0; i < totalClone; i++)
-			cAll[i]->swap();
-	}
-	void stepApp() {
-		// exp3. tree structure, tall tree.
-		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
-
-		proc(0, 1, 0, "g1");
-		proc(1, 2, 0, "g1");
-		proc(2, 3, 0, "g1");
-		proc(3, 4, 0, "g1");
-		proc(4, 5, 0, "g1");
-		proc(5, 6, 0, "g1");
-		proc(6, 7, 0, "g1");
-		proc(7, 8, 0, "g1");
-		proc(8, 9, 0, "g1");
-		proc(9, 10, 0, "g1");
-		proc(10, 11, 0, "g1");
-		proc(11, 12, 0, "g1");
-		proc(12, 13, 0, "g1");
-		proc(13, 14, 0, "g1");
-		proc(14, 15, 0, "g1");
-		proc(15, 16, 0, "g1");
-		proc(16, 17, 0, "g1");
-		proc(17, 18, 0, "g1");
-		proc(18, 19, 0, "g1");
-		proc(19, 20, 0, "g1");
-		proc(20, 21, 0, "g1");
-		proc(21, 22, 0, "g1");
-		proc(22, 23, 0, "g1");
-		proc(23, 24, 0, "g1");
-		proc(24, 25, 0, "g1");
-		proc(25, 26, 0, "g1");/**/
-
-		//cudaDeviceSynchronize();
-		//printf("\n");
-		for (int i = 0; i < totalClone; i++)
-			cAll[i]->swap();
-	}
-	void stepApp3() {
-		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
-		if (stepCount < 1000)
-			cAll[rootCloneId]->output(stepCount, "exp1_single");
+		if (stepCount < 1000 && o)
+			cAll[rootCloneId]->output(stepCount, "s0");
 		cAll[rootCloneId]->swap();
+	}
+	void stepApp1(bool o) {
+		stepCount++;
+		cAll[rootCloneId]->step(stepCount);
+		proc(0, 1, o, "s1");
+		for (int i = 0; i < totalClone; i++)
+			cAll[i]->swap();
+	}
+	void stepApp(){
+		stepCount++;
+		cAll[rootCloneId]->step(stepCount);
+		proc(0, 1, 0, "g1");
+		proc(0, 2, 0, "g1");
+		proc(2, 3, 1, "scene2_cloned");
+		for (int i = 0; i < totalClone; i++)
+			cAll[i]->swap();
 	}
 };
 
-// exp1 validate, single version
-class SocialForceSimApp1 {
+// exp1 stand-alone version
+class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
 	int paintId = 0;
@@ -1135,25 +906,32 @@ public:
 	int &stepCount = g_stepCount;
 	int rootCloneId = 0;
 	int **cloneTree;
+	int paramWeight[NUM_PARAM];
 
 	int initSimClone() {
-		FILE* pCout;
-		AllocConsole();
-		freopen_s(&pCout, "conin$", "r", stdin);
-		freopen_s(&pCout, "conout$", "w", stdout);
-		freopen_s(&pCout, "conout$", "w", stderr);
-
-		srand(0);
+		srand(1234);
 
 		cAll = new SocialForceClone*[totalClone];
 		cloneTree = new int*[2];
 		int j = 0;
 
+		int cloneParams[NUM_PARAM];
+		for (int i = 0; i < NUM_PARAM; i++) {
+			cloneParams[i] = 1;
+		}
+
+		paramWeight[0] = 1;
+		paramWeight[1] = 3;
+		paramWeight[2] = 1;
+		paramWeight[3] = 3;
+
 		for (int i = 0; i < totalClone; i++) {
-			int cloneParams[NUM_PARAM];
-			cloneParams[0] = 4;
-			cloneParams[1] = 4;
-			cloneParams[2] = 4;
+			for (int i = 0; i < NUM_PARAM; i++) {
+				cloneParams[i] = 1;
+			}
+			if (i == 1) cloneParams[0] = 100;
+			if (i == 2) cloneParams[1] = 100;
+			if (i == 3) { cloneParams[0] = 100; cloneParams[1] = 100; }
 			cAll[i] = new SocialForceClone(i, cloneParams);
 		}
 
@@ -1164,7 +942,7 @@ public:
 			agents[i].myClone = cAll[rootCloneId];
 			agents[i].contextId = i;
 			agents[i].color = cAll[rootCloneId]->color;
-			agents[i].init(cAll[rootCloneId], i);
+			agents[i].init(i);
 			context[i] = &agents[i];
 		}
 
@@ -1278,6 +1056,7 @@ public:
 		//cAll[c]->output2(stepCount, s);
 		compareAndEliminate(cAll[p], cAll[c]);
 	}
+
 	void swap(int **cloneTree, int a, int b) {
 		int t1 = cloneTree[0][a];
 		cloneTree[0][a] = cloneTree[0][b];
@@ -1287,6 +1066,7 @@ public:
 		cloneTree[1][a] = cloneTree[1][b];
 		cloneTree[1][b] = t1;
 	}
+
 	void quickSort(int **cloneTree, int l, int r) {
 		if (l == r)
 			return;
@@ -1366,258 +1146,25 @@ public:
 		delete mstSet;
 		delete key;
 	}
-	 
-	void stepApp() {
+	void stepApp0(bool o) {
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
-		if (stepCount < 1000)
-			cAll[rootCloneId]->output(stepCount, "exp1_single_0.1disp");
+		if (stepCount < 1000 && o)
+			cAll[rootCloneId]->output(stepCount, "s0");
 		cAll[rootCloneId]->swap();
 	}
-};
-
-// exp2 EE/GE/SA
-class SocialForceSimApp2 {
-public:
-	SocialForceClone **cAll;
-	int paintId = 0;
-	int totalClone = 27;
-	int &stepCount = g_stepCount;
-	int rootCloneId = 0;
-	int **cloneTree;
-
-	int initSimClone() {
-		srand(0);
-
-		cAll = new SocialForceClone*[totalClone];
-		cloneTree = new int*[2];
-		int j = 0;
-
-		for (int i = 0; i < totalClone; i++) {
-			int cloneParams[NUM_PARAM];
-			cloneParams[0] = i % 3 + 2;
-			cloneParams[1] = (i / 3) % 3 + 2;
-			cloneParams[2] = (i / 9) % 3 + 2;
-			cAll[i] = new SocialForceClone(i, cloneParams);
-		}
-
-		for (int cloneid = 0; cloneid < totalClone; cloneid++) {
-			SocialForceAgent *agents = cAll[cloneid]->ap->agentArray;
-			SocialForceAgent **context = cAll[cloneid]->context;
-
-			for (int i = 0; i < NUM_CAP; i++) {
-				agents[i].myClone = cAll[cloneid];
-				agents[i].contextId = i;
-				agents[i].color = cAll[cloneid]->color;
-				agents[i].init(cAll[cloneid], i);
-				context[i] = &agents[i];
-			}
-
-			cAll[cloneid]->numElem = NUM_CAP;
-			for (int j = 0; j < NUM_CAP; j++)
-				cAll[cloneid]->cloneFlag[j] = true;
-		}
-
-		mst();
-
-		return EXIT_SUCCESS;
-	}
-	bool cloningCondition(SocialForceAgent *agent, bool *childTakenMap,
-		SocialForceClone *parentClone, SocialForceClone *childClone) {
-
-		// if agent has been cloned?
-		if (childClone->cloneFlag[agent->contextId] == true)
-			return false;
-
-		// active cloning condition
-		double2 &loc = agent->data.loc;
-		for (int i = 0; i < NUM_PARAM; i++) {
-			if (parentClone->cloneParams[i] == childClone->cloneParams[i])
-				continue;
-			obstacleLine g1 = parentClone->gates[i];
-			obstacleLine g2 = childClone->gates[i];
-			obstacleLine g0 = obstacleLine(0, 0, 0, 0);
-			if (g1 != g2) {
-				obstacleLine gate = (g1 != g0) ? g1 : g2;
-				if (gate.pointToLineDist(loc) < 6)
-					return true;
-			}
-		}
-
-		// passive cloning condition
-		int minx = max((loc.x - RADIUS_I) / CELL_DIM, 0);
-		int miny = max((loc.y - RADIUS_I) / CELL_DIM, 0);
-		int maxx = min((loc.x + RADIUS_I) / CELL_DIM, NUM_CELL - 1);
-		int maxy = min((loc.y + RADIUS_I) / CELL_DIM, NUM_CELL - 1);
-		for (int i = minx; i <= maxx; i++)
-			for (int j = miny; j <= maxy; j++)
-				if (childTakenMap[i * NUM_CELL + j])
-					return true;
-
-		// pass all the check, don't need to be cloned
-		return false;
-	}
-	void performClone(SocialForceClone *parentClone, SocialForceClone *childClone) {
-		childClone->parentCloneid = parentClone->cloneid;
-
-		// 1. copy the context of parent clone
-		memcpy(childClone->context, parentClone->context, NUM_CAP * sizeof(void*));
-
-		// 2. update the context with agents of its own
-		for (int i = 0; i < childClone->numElem; i++) {
-			SocialForceAgent *agent = childClone->ap->agentPtrArray[i];
-			childClone->context[agent->contextId] = agent;
-		}
-
-		// 3. construct passive cloning map
-		double2 dim = make_double2(ENV_DIM, ENV_DIM);
-		memset(childClone->takenMap, 0, sizeof(bool) * NUM_CELL * NUM_CELL);
-		for (int i = 0; i < childClone->numElem; i++) {
-			const SocialForceAgent &agent = *childClone->ap->agentPtrArray[i];
-			int takenId = agent.data.loc.x / CELL_DIM;
-			takenId = takenId * NUM_CELL + agent.data.loc.y / CELL_DIM;
-			childClone->takenMap[takenId] = true;
-		}
-
-		// 4. perform active and passive cloning (in cloningCondition checking)
-		for (int i = 0; i < NUM_CAP; i++) {
-			SocialForceAgent *agent = parentClone->context[i];
-			if (cloningCondition(agent, childClone->takenMap, parentClone, childClone)) {
-				SocialForceAgent &childAgent = *childClone->ap->agentPtrArray[childClone->numElem];
-				childClone->ap->takenFlags[childClone->numElem] = true;
-				childAgent.initNewClone(agent, childClone);
-				childClone->context[childAgent.contextId] = &childAgent;
-				childClone->cloneFlag[childAgent.contextId] = true;
-				childClone->numElem++;
-			}
-		}
-	}
-	void compareAndEliminate(SocialForceClone *parentClone, SocialForceClone *childClone) {
-		wchar_t message[20];
-		for (int i = 0; i < childClone->numElem; i++) {
-			SocialForceAgent &childAgent = *childClone->ap->agentPtrArray[i];
-			SocialForceAgent &parentAgent = *childAgent.myOrigin;
-
-			double velDiff = length(childAgent.dataCopy.velocity - parentAgent.dataCopy.velocity);
-			double locDiff = length(childAgent.dataCopy.loc - parentAgent.dataCopy.loc);
-			if (locDiff == 0 && velDiff == 0) {
-				childClone->ap->takenFlags[i] = false;
-				childClone->cloneFlag[childAgent.contextId] = false;
-			}
-
-			/*else {
-			if (childClone->cloneid == 4) {
-			swprintf_s(message, 20, L"not false: %d\n", i);
-			OutputDebugString(message);
-			}
-			}*/
-		}
-		childClone->numElem = childClone->ap->reorder(childClone->numElem);
-	}
-	void proc(int p, int c, bool o, char *s) {
-		performClone(cAll[p], cAll[c]);
-		cAll[c]->step(stepCount);
-		if (o) {
-			if (stepCount < 1000)
-				cAll[c]->output(stepCount, s);
-		}
-		//cAll[c]->output2(stepCount, s);
-		compareAndEliminate(cAll[p], cAll[c]);
-	}
-	void swap(int **cloneTree, int a, int b) {
-		int t1 = cloneTree[0][a];
-		cloneTree[0][a] = cloneTree[0][b];
-		cloneTree[0][b] = t1;
-
-		t1 = cloneTree[1][a];
-		cloneTree[1][a] = cloneTree[1][b];
-		cloneTree[1][b] = t1;
-	}
-	void quickSort(int **cloneTree, int l, int r) {
-		if (l == r)
-			return;
-		int pi = l + rand() % (r - l);
-		swap(cloneTree, l, pi);
-		int pivot = cloneTree[0][l];
-
-		int i = l + 1, j = l + 1;
-		for (; j < r; j++) {
-			if (cloneTree[0][j] < pivot) {
-				swap(cloneTree, i, j);
-				i++;
-			}
-		}
-		swap(cloneTree, l, i - 1);
-		quickSort(cloneTree, l, i - 1);
-		quickSort(cloneTree, i, r);
-	}
-
-	void mst() {
-		// clone diff matrix
-		int **cloneDiff = new int*[totalClone];
-		for (int i = 0; i < totalClone; i++) {
-			cloneDiff[i] = new int[totalClone];
-			for (int j = 0; j < totalClone; j++)
-				cloneDiff[i][j] = 0;
-		}
-
-		for (int i = 0; i < totalClone; i++) {
-			for (int j = 0; j < totalClone; j++) {
-				for (int k = 0; k < NUM_PARAM; k++) {
-					if (cAll[i]->cloneParams[k] != cAll[j]->cloneParams[k]) {
-						//cloneDiff[i][j] += cAll[i]->cloneParams[k] * paramWeight[k] + cAll[j]->cloneParams[k] * paramWeight[k];
-						cloneDiff[i][j]++;
-					}
-				}
-				wchar_t message[20];
-				swprintf_s(message, 20, L"%d ", cloneDiff[i][j]);
-				OutputDebugString(message);
-			}
-			OutputDebugString(L"\n");
-		}
-		int *parent = cloneTree[0] = new int[totalClone];
-		int *child = cloneTree[1] = new int[totalClone];
-		int *key = new int[totalClone];
-		bool *mstSet = new bool[totalClone];
-
-		for (int i = 0; i < totalClone; i++)
-			child[i] = i, key[i] = INT_MAX, mstSet[i] = false;
-
-		key[0] = 0;
-		parent[0] = -1;
-		child[0] = 0;
-
-		int count = 0;
-		while (count++ < totalClone - 1) {
-			int minKey = INT_MAX;
-			int minIdx;
-			for (int j = 0; j < totalClone; j++)
-				if (mstSet[j] == false && key[j] < minKey)
-					minKey = key[j], minIdx = j;
-			mstSet[minIdx] = true;
-
-			for (int j = 0; j < totalClone; j++)
-				if (cloneDiff[minIdx][j] && mstSet[j] == false && cloneDiff[minIdx][j] < key[j])
-					parent[j] = minIdx, key[j] = cloneDiff[minIdx][j];
-		}
-
-		quickSort(cloneTree, 0, totalClone);
-
-		for (int i = 0; i < totalClone; i++) {
-			wchar_t message[20];
-			swprintf_s(message, 20, L"%d - %d: %d\n", cloneTree[0][i], cloneTree[1][i], cloneDiff[i][parent[i]]);
-			OutputDebugString(message);
-		}
-
-		delete mstSet;
-		delete key;
-	}
-
-	void stepApp() {
+	void stepApp1(bool o) {
 		stepCount++;
-		for (int i = 0; i < totalClone; i++)
-			cAll[i]->step(stepCount);
+		cAll[rootCloneId]->step(stepCount);
+		proc(0, 1, o, "s1");
 		for (int i = 0; i < totalClone; i++)
 			cAll[i]->swap();
+	}
+	void stepApp(){
+		stepCount++;
+		cAll[rootCloneId]->step(stepCount);
+		//if (stepCount < 300)
+		//	cAll[rootCloneId]->output(stepCount, "scene2_single");
+		cAll[rootCloneId]->swap();
 	}
 };
