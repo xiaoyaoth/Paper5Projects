@@ -12,6 +12,7 @@
 #include "device_launch_parameters.h"
 #include <curand_kernel.h>
 #include <omp.h>
+#include <random>
 
 #define USE_GPU 1
 
@@ -159,16 +160,16 @@ namespace util {
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 128
-#define NUM_PARAM 3
+#define NUM_CAP 32
+#define NUM_PARAM 64
 #define NUM_STEP 500
 #define NUM_GOAL 3
-#define ENV_DIM 128
-#define NUM_CELL 8
-#define CELL_DIM 16
+#define ENV_DIM 64
+#define NUM_CELL 16
+#define CELL_DIM 8
 #define RADIUS_I 6
 
-#define NUM_WALLS 10
+#define NUM_WALLS 12
 
 class SocialForceAgent;
 class SocialForceClone;
@@ -254,6 +255,11 @@ public:
 	}
 };
 
+struct CloneTreeNode {
+	int cloneid;
+	vector<CloneTreeNode*> children;
+};
+
 class SocialForceClone {
 public:
 	uint numElem;
@@ -274,15 +280,20 @@ public:
 	int cloneid;
 	int parentCloneid;
 
-	int cloneIdArray[NUM_PARAM];
-	int cloneMasks[NUM_PARAM];
-	int cloneLevel;
-
 	fstream fout;
 
 	__host__ SocialForceClone() {}
 
-	__host__ void init(int id, int pv1[NUM_PARAM], int clondIdArray1[NUM_PARAM]) {
+	bool isInRectSub(double px, double py, double rcx1, double rcy1, double rcx2, double rcy2) {
+		double xr = (px - rcx1) * (px - rcx2);
+		double yr = (py - rcy1) * (py - rcy2);
+		return (xr <= 0 && yr <= 0);
+	}
+
+	__host__ void init(int id, int pv1[NUM_PARAM], obstacleLine *globalGates) {
+		default_random_engine randGen(13);
+		uniform_real_distribution<double> distr(0.0, 1.0);
+
 		this->color.x = rand() % 256;
 		this->color.y = rand() % 256;
 		this->color.z = rand() % 256;
@@ -301,38 +312,32 @@ public:
 		cudaMemset(cloneFlags, 0, sizeof(bool) * NUM_CAP);
 		
 		memcpy(cloneParams, pv1, sizeof(int) * NUM_PARAM);
-		memcpy(cloneIdArray, clondIdArray1, sizeof(int) * NUM_PARAM);
 		cudaStreamCreate(&myStream);
 		
-		walls[0].init(0.1 * ENV_DIM, 0.09 * ENV_DIM, 0.1 * ENV_DIM, 0.91 * ENV_DIM);
-		walls[1].init(0.09 * ENV_DIM, 0.1 * ENV_DIM, 0.91 * ENV_DIM, 0.1 * ENV_DIM);
-		walls[2].init(0.9 * ENV_DIM, 0.09 * ENV_DIM, 0.9 * ENV_DIM, 0.3 * ENV_DIM);
-		walls[3].init(0.9 * ENV_DIM, 0.3 * ENV_DIM, 0.9 * ENV_DIM, 0.91 * ENV_DIM);
-		walls[4].init(0.09 * ENV_DIM, 0.9 * ENV_DIM, 0.91 * ENV_DIM, 0.9 * ENV_DIM);
-		walls[5].init(0.5 * ENV_DIM, 0.7 * ENV_DIM, 0.5 * ENV_DIM, 0.91 * ENV_DIM);
-		walls[6].init(0.09 * ENV_DIM, 0.5 * ENV_DIM, 0.3 * ENV_DIM, 0.5 * ENV_DIM);
-		walls[7].init(0.5 * ENV_DIM, 0.09 * ENV_DIM, 0.5 * ENV_DIM, 0.3 * ENV_DIM);
-		walls[8].init(0.5 * ENV_DIM, 0.3 * ENV_DIM, 0.5 * ENV_DIM, 0.7 * ENV_DIM);
-		walls[9].init(0.3 * ENV_DIM, 0.5 * ENV_DIM, 0.91 * ENV_DIM, 0.5 * ENV_DIM);
+		walls[0].init(0.05 * ENV_DIM, 0.05 * ENV_DIM, 0.05 * ENV_DIM, 0.25 * ENV_DIM);
+		walls[1].init(0.05 * ENV_DIM, 0.35 * ENV_DIM, 0.05 * ENV_DIM, 0.65 * ENV_DIM);
+		walls[2].init(0.05 * ENV_DIM, 0.75 * ENV_DIM, 0.05 * ENV_DIM, 0.95 * ENV_DIM);
 
-		walls[9].sx += cloneParams[1]; walls[6].ex -= cloneParams[1];
-		walls[7].ey -= cloneParams[2]; walls[8].sy += cloneParams[2];
-		walls[8].ey -= cloneParams[0]; walls[5].sy += cloneParams[0];
+		walls[3].init(0.95 * ENV_DIM, 0.05 * ENV_DIM, 0.95 * ENV_DIM, 0.25 * ENV_DIM);
+		walls[4].init(0.95 * ENV_DIM, 0.35 * ENV_DIM, 0.95 * ENV_DIM, 0.65 * ENV_DIM);
+		walls[5].init(0.95 * ENV_DIM, 0.75 * ENV_DIM, 0.95 * ENV_DIM, 0.95 * ENV_DIM);
 
-		gates[0].init(0.5 * ENV_DIM, 0.7 * ENV_DIM - cloneParams[0], 0.5 * ENV_DIM, 0.7 * ENV_DIM + cloneParams[0]);
-		gates[1].init(0.3 * ENV_DIM - cloneParams[1], 0.5 * ENV_DIM, 0.3 * ENV_DIM + cloneParams[1], 0.5 * ENV_DIM);
-		gates[2].init(0.5 * ENV_DIM, 0.3 * ENV_DIM - cloneParams[2], 0.5 * ENV_DIM, 0.3 * ENV_DIM + cloneParams[2]);
+		walls[6].init(0.05 * ENV_DIM, 0.05 * ENV_DIM, 0.25 * ENV_DIM, 0.05 * ENV_DIM);
+		walls[7].init(0.35 * ENV_DIM, 0.05 * ENV_DIM, 0.65 * ENV_DIM, 0.05 * ENV_DIM);
+		walls[8].init(0.75 * ENV_DIM, 0.05 * ENV_DIM, 0.95 * ENV_DIM, 0.05 * ENV_DIM);
 
-		for (cloneLevel = NUM_PARAM - 1; cloneLevel >= 0; cloneLevel--)
-			if (cloneIdArray[cloneLevel] != 0) break;
+		walls[9].init(0.05 * ENV_DIM, 0.95 * ENV_DIM, 0.25 * ENV_DIM, 0.95 * ENV_DIM);
+		walls[10].init(0.35 * ENV_DIM, 0.95 * ENV_DIM, 0.65 * ENV_DIM, 0.95 * ENV_DIM);
+		walls[11].init(0.75 * ENV_DIM, 0.95 * ENV_DIM, 0.95 * ENV_DIM, 0.95 * ENV_DIM);
 
 		for (int i = 0; i < NUM_PARAM; i++) {
-			cloneMasks[i] = 1;
-			cloneMasks[i] = cloneMasks[i] << cloneIdArray[i];
-			cloneMasks[i] = cloneMasks[i] >> 1;
+			if (cloneParams[i] == 1)
+				gates[i] = globalGates[i];
+			else
+				gates[i].init(0, 0, 0, 0);
 		}
 
-		util::hostAllocCopyToDevice(this, &this->selfDev);
+		util::hostAllocCopyToDevice<SocialForceClone>(this, &this->selfDev);
 	}
 	void step(int stepCount);
 	void alterGate(int stepCount);
@@ -371,7 +376,7 @@ class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
 	int paintId = 0;
-	int totalClone = 27;
+	int totalClone = 3;
 	int stepCount = 0;
 	int rootCloneId = 0;
 	int **cloneTree;
@@ -390,8 +395,15 @@ public:
 	void getLocAndColorFromDevice();
 	void initRootClone(SocialForceClone *c, SocialForceClone *cDev);
 
+	bool isInRectSub(double px, double py, double rcx1, double rcy1, double rcx2, double rcy2) {
+		double xr = (px - rcx1) * (px - rcx2);
+		double yr = (py - rcy1) * (py - rcy2);
+		return (xr <= 0 && yr <= 0);
+	}
+
 	int initSimClone() {
-		srand(0);
+		default_random_engine randGen(13);
+		uniform_real_distribution<double> distr(0.0, 1.0);
 
 		debugLocHost = new double2[NUM_CAP];
 		debugColorHost = new uchar4[NUM_CAP];
@@ -405,20 +417,44 @@ public:
 		cAll = new SocialForceClone*[totalClone];
 		cloneTree = new int*[2];
 		int j = 0;
+		obstacleLine globalGates[64];
+
+		for (int i = 0; i < NUM_PARAM / 4; i++) {
+			double x = (0.1 + 0.8 * distr(randGen)) * ENV_DIM;
+			double y = (0.1 + 0.8 * distr(randGen)) * ENV_DIM;
+			while (isInRectSub(x, y, 0.4 * ENV_DIM, 0.4 * ENV_DIM, 0.6 * ENV_DIM, 0.6 * ENV_DIM)) {
+				x = (0.1 + 0.8 * distr(randGen)) * ENV_DIM;
+				y = (0.1 + 0.8 * distr(randGen)) * ENV_DIM;
+			}
+			double dx = (0.01 + 0.2 * distr(randGen)) * ENV_DIM;
+			double dy = (0.01 + 0.2 * distr(randGen)) * ENV_DIM;
+			globalGates[4 * i].init((x - dx), (y - dy), (x - dx), (y + dy));
+			globalGates[4 * i + 1].init((x + dx), (y - dy), (x + dx), (y + dy));
+			globalGates[4 * i + 2].init((x - dx), (y - dy), (x + dx), (y - dy));
+			globalGates[4 * i + 3].init((x - dx), (y + dy), (x + dx), (y + dy));
+		}
 
 		for (int i = 0; i < totalClone; i++) {
-			int cloneParams[NUM_PARAM], cloneIdArray[NUM_PARAM];
-			cloneParams[0] = i % 3 + 2;
-			cloneParams[1] = (i / 3) % 3 + 2;
-			cloneParams[2] = (i / 9) % 3 + 2;
-			cloneIdArray[0] = i % 3;
-			cloneIdArray[1] = (i / 3) % 3;
-			cloneIdArray[2] = (i / 9) % 3;
+			int cloneParams[NUM_PARAM];
 			wchar_t message[128];
 			swprintf_s(message, L"[%d %d%d%d]\t", i, cloneParams[0] - 2, cloneParams[1] - 2, cloneParams[2] - 2);
 			OutputDebugString(message);
 			cudaMallocHost((void**)&cAll[i], sizeof(SocialForceClone));
-			cAll[i]->init(i, cloneParams, cloneIdArray);
+			for (int j = 0; j < NUM_PARAM / 4; j++) {
+				if (distr(randGen) > 0.1) {
+					cloneParams[4 * j] = 0;
+					cloneParams[4 * j + 1] = 0;
+					cloneParams[4 * j + 2] = 0;
+					cloneParams[4 * j + 3] = 0;
+				}
+				else  {
+					cloneParams[4 * j] = 1;
+					cloneParams[4 * j + 1] = 1;
+					cloneParams[4 * j + 2] = 1;
+					cloneParams[4 * j + 3] = 1;
+				}
+			}
+			cAll[i]->init(i, cloneParams, globalGates);
 		}
 
 		initRootClone(cAll[rootCloneId], cAll[rootCloneId]->selfDev);
@@ -428,7 +464,7 @@ public:
 
 		return EXIT_SUCCESS;
 	}
-	void stepApp5(bool o) {
+	void stepApp1(bool o) {
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
 		for (int i = 1; i < totalClone; i++)
@@ -450,9 +486,10 @@ public:
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
 		
-		/*
+		
 		proc(0, 1, 0, "g1");
 		proc(0, 2, 0, "g1");
+		/*
 		proc(0, 3, 0, "g1");
 		proc(0, 6, 0, "g1");
 		proc(0, 9, 0, "g1");
@@ -484,9 +521,8 @@ public:
 		proc(8, 17, 0, "g1");
 		proc(8, 26, 0, "g1");
 		*/
-		
-		
-		
+			
+		/*
 #pragma omp parallel num_threads(6) 
 		{
 			int tid = omp_get_thread_num();
@@ -531,7 +567,7 @@ public:
 			case 7: proc(8, 26, 0, "g1"); break;
 			}
 		}
-
+		*/
 
 		//cudaDeviceSynchronize();
 		printf("\n");

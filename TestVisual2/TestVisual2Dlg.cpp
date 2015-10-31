@@ -15,8 +15,9 @@
 //#include "SocialForce_8.h"		// previous entire parameter exploration strategy with flags
 //#include "SocialForce_7.h"		// new strategy old scenario
 //#include "SocialForce_5.h"		// two obstacle scenario
-#include "SocialForce_9.h"		// exp5 complex scenario
+//#include "SocialForce_9.h"		// exp5 complex scenario
 //#include "SocialForceGPU2.h"
+#include "SocialForceGPU.h"		// exp5 complex scenario GPU
 
 extern "C" void runTest();
 
@@ -301,19 +302,19 @@ void CTestVisual2Dlg::myDraw()
 		_memDC.Ellipse(x - 5, y - 5, x + 5, y + 5);
 
 		// draw agent id;
-//		CFont font;
-//		font.CreatePointFont(80, L"Consolas", &_memDC);
-//		CGdiObject *pOldFont = _memDC.SelectObject(&font);
-//		CPen p2(PS_SOLID, 1, RGB(0, 0, 0));
-//		_memDC.SelectObject(p2);
-//		CRect rect(x - 10, y - 10, x + 10, y + 10);
-//		CString str;
-//#ifdef USE_GPU
-//		str.Format(L"%d", cloneApp.debugContextIdHost[i]);
-//#else
-//		str.Format(L"%d", ag.contextId);
-//#endif
-//		_memDC.DrawText(str, rect, DT_CENTER);
+		CFont font;
+		font.CreatePointFont(80, L"Consolas", &_memDC);
+		CGdiObject *pOldFont = _memDC.SelectObject(&font);
+		CPen p2(PS_SOLID, 1, RGB(0, 0, 0));
+		_memDC.SelectObject(p2);
+		CRect rect(x - 10, y - 10, x + 10, y + 10);
+		CString str;
+#ifdef USE_GPU
+		str.Format(L"%d", cloneApp.debugContextIdHost[i]);
+#else
+		str.Format(L"%d", ag.contextId);
+#endif
+		_memDC.DrawText(str, rect, DT_CENTER);
 	}
 	//_memDC.SelectObject(pOldFont);
 

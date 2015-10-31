@@ -129,6 +129,7 @@
     <ClInclude Include="SocialForce.h" />
     <ClInclude Include="SocialForceGPU.h" />
     <ClInclude Include="SocialForceGPU2.h" />
+    <ClInclude Include="SocialForceGPU3.h" />
     <ClInclude Include="SocialForce_1.h" />
     <ClInclude Include="SocialForce_2.h" />
     <ClInclude Include="SocialForce_3.h" />
@@ -177,6 +178,10 @@
     <CudaCompile Include="kernel_4_exp3_concurrency.cu">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+    </CudaCompile>
+    <CudaCompile Include="kernel_5_exp5.cu">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
     </CudaCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
