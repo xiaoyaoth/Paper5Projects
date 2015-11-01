@@ -160,13 +160,13 @@ namespace util {
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 32
+#define NUM_CAP 256
 #define NUM_PARAM 64
 #define NUM_STEP 500
 #define NUM_GOAL 3
 #define ENV_DIM 64
 #define NUM_CELL 16
-#define CELL_DIM 8
+#define CELL_DIM 4
 #define RADIUS_I 6
 
 #define NUM_WALLS 12
@@ -376,7 +376,7 @@ class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
 	int paintId = 0;
-	int totalClone = 3;
+	int totalClone = 27;
 	int stepCount = 0;
 	int rootCloneId = 0;
 	int **cloneTree;
@@ -426,8 +426,8 @@ public:
 				x = (0.1 + 0.8 * distr(randGen)) * ENV_DIM;
 				y = (0.1 + 0.8 * distr(randGen)) * ENV_DIM;
 			}
-			double dx = (0.01 + 0.2 * distr(randGen)) * ENV_DIM;
-			double dy = (0.01 + 0.2 * distr(randGen)) * ENV_DIM;
+			double dx = (0.01 + 0.02 * distr(randGen)) * ENV_DIM;
+			double dy = (0.01 + 0.02 * distr(randGen)) * ENV_DIM;
 			globalGates[4 * i].init((x - dx), (y - dy), (x - dx), (y + dy));
 			globalGates[4 * i + 1].init((x + dx), (y - dy), (x + dx), (y + dy));
 			globalGates[4 * i + 2].init((x - dx), (y - dy), (x + dx), (y - dy));
@@ -485,11 +485,11 @@ public:
 	void stepApp(){
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
-		
+
+		/*
 		
 		proc(0, 1, 0, "g1");
 		proc(0, 2, 0, "g1");
-		/*
 		proc(0, 3, 0, "g1");
 		proc(0, 6, 0, "g1");
 		proc(0, 9, 0, "g1");
@@ -522,7 +522,7 @@ public:
 		proc(8, 26, 0, "g1");
 		*/
 			
-		/*
+		
 #pragma omp parallel num_threads(6) 
 		{
 			int tid = omp_get_thread_num();
@@ -553,6 +553,7 @@ public:
 			case 11: proc(6, 24, 0, "g1"); break;
 			}
 		}
+
 #pragma omp parallel num_threads(8) 
 		{
 			int tid = omp_get_thread_num();
@@ -567,7 +568,6 @@ public:
 			case 7: proc(8, 26, 0, "g1"); break;
 			}
 		}
-		*/
 
 		//cudaDeviceSynchronize();
 		printf("\n");

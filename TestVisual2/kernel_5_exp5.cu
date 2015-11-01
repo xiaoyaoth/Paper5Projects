@@ -35,84 +35,6 @@ __global__ void testFunc() {
 
 }
 
-namespace NeighborModule {
-	__device__ int zcode(int x, int y) {
-		//return x * NUM_CELL + y;
-		x &= 0x0000ffff;					// x = ---- ---- ---- ---- fedc ba98 7654 3210
-		y &= 0x0000ffff;					// x = ---- ---- ---- ---- fedc ba98 7654 3210
-		x = (x ^ (x << 8)) & 0x00ff00ff; // x = ---- ---- fedc ba98 ---- ---- 7654 3210
-		y = (y ^ (y << 8)) & 0x00ff00ff; // x = ---- ---- fedc ba98 ---- ---- 7654 3210
-		y = (y ^ (y << 4)) & 0x0f0f0f0f; // x = ---- fedc ---- ba98 ---- 7654 ---- 3210
-		x = (x ^ (x << 4)) & 0x0f0f0f0f; // x = ---- fedc ---- ba98 ---- 7654 ---- 3210
-		y = (y ^ (y << 2)) & 0x33333333; // x = --fe --dc --ba --98 --76 --54 --32 --10
-		x = (x ^ (x << 2)) & 0x33333333; // x = --fe --dc --ba --98 --76 --54 --32 --10
-		y = (y ^ (y << 1)) & 0x55555555; // x = -f-e -d-c -b-a -9-8 -7-6 -5-4 -3-2 -1-0
-		x = (x ^ (x << 1)) & 0x55555555; // x = -f-e -d-c -b-a -9-8 -7-6 -5-4 -3-2 -1-0
-		return x | (y << 1);
-	}
-
-	__device__ int zcode(const double2 &loc) {
-		int ix = loc.x / (ENV_DIM / NUM_CELL);
-		int iy = loc.y / (ENV_DIM / NUM_CELL);
-		return zcode(ix, iy);
-	}
-
-	__device__ int zcode(SocialForceAgent *agent) {
-		return zcode(agent->data.loc);
-	}
-
-	__device__ void swap(SocialForceAgent** agentPtrs, int a, int b) {
-		SocialForceAgent* temp = agentPtrs[a];
-		agentPtrs[a] = agentPtrs[b];
-		agentPtrs[b] = temp;
-	}
-
-	__device__ void quickSortByAgentLoc(SocialForceAgent** agentPtrs, curandState &rState, int l, int r) {
-		if (l == r)
-			return;
-		int pi = l + curand(&rState) % (r - l);
-		swap(agentPtrs, l, pi);
-		SocialForceAgent* pivot = agentPtrs[l];
-
-		int i = l + 1, j = l + 1;
-		for (; j < r; j++) {
-			if (zcode(agentPtrs[j]) < zcode(pivot)) {
-				swap(agentPtrs, i, j);
-				i++;
-			}
-		}
-		swap(agentPtrs, l, i - 1);
-		quickSortByAgentLoc(agentPtrs, rState, l, i - 1);
-		quickSortByAgentLoc(agentPtrs, rState, i, r);
-	}
-
-	__global__ void sortAgentByLocKernel(SocialForceAgent** agentPtrsToSort, curandState *rState, int numCap) {
-		int idx = threadIdx.x + blockIdx.x * blockDim.x;
-		curandState &rStateLocal = *rState;
-		if (idx == 0)
-			quickSortByAgentLoc(agentPtrsToSort, rStateLocal, 0, numCap);
-	}
-
-	__global__ void setCidStartEndKernel(SocialForceAgent** contextSorted, int* cidStarts, int* cidEnds, int numCap) {
-		const int idx = threadIdx.x + blockIdx.x * blockDim.x;
-		if (idx < numCap && idx > 0) {
-			int cid = zcode(contextSorted[idx]);
-			int cidPrev = zcode(contextSorted[idx - 1]);
-			if (cid != cidPrev) {
-				cidStarts[cid] = idx;
-				cidEnds[cidPrev] = idx;
-			}
-		}
-		if (idx == 0) {
-			int cid = zcode(contextSorted[0]);
-			cidStarts[cid] = 0;
-
-			cid = zcode(contextSorted[numCap - 1]);
-			cidEnds[cid] = numCap;
-		}
-	}
-}
-
 extern "C"
 void runTest() {
 	testFunc << <32, 32 >> >();
@@ -528,8 +450,8 @@ namespace AppUtil {
 
 	__global__ void performCloningKernel(SocialForceClone *p, SocialForceClone *c, int numCap) {
 		int idx = threadIdx.x + blockIdx.x * blockDim.x;
-		if (idx < p->numElem) {
-			SocialForceAgent *agent = p->ap->agentPtrArray[idx];
+		if (idx < numCap) {
+			SocialForceAgent *agent = p->context[idx];
 			if (cloningCondition(agent, p, c)) {
 				uint lastNum = atomicInc(&c->numElem, numCap);
 				SocialForceAgent& childAgent = *c->ap->agentPtrArray[lastNum];
@@ -582,8 +504,6 @@ namespace AppUtil {
 };
 
 void SocialForceSimApp::performClone(SocialForceClone *parentClone, SocialForceClone *childClone) {
-	childClone->parentCloneid = parentClone->cloneid;
-
 	// 1. copy the context of parent clone
 	cudaMemcpyAsync(childClone->context, parentClone->context, NUM_CAP * sizeof(SocialForceAgent*), cudaMemcpyDeviceToDevice, childClone->myStream);
 	cudaStreamSynchronize(childClone->myStream);
@@ -616,7 +536,7 @@ void SocialForceSimApp::performClone(SocialForceClone *parentClone, SocialForceC
 	cudaMemcpyAsync(childClone, childClone->selfDev, sizeof(SocialForceClone), cudaMemcpyDeviceToHost, childClone->myStream);
 	cudaStreamSynchronize(childClone->myStream);
 	getLastCudaError("perform clone");
-
+	childClone->parentCloneid = parentClone->cloneid;
 }
 
 void compareAndEliminateCPU(SocialForceClone *parentClone, SocialForceClone *childClone)
@@ -644,9 +564,12 @@ void SocialForceSimApp::compareAndEliminate(SocialForceClone *parentClone, Socia
 	//AppUtil::reorderKernel << <1, 1 >> >(childClone->selfDev, childClone->numElem);
 	cudaMemcpyAsync(childClone, childClone->selfDev, sizeof(SocialForceClone), cudaMemcpyDeviceToHost, childClone->myStream);
 	cudaStreamSynchronize(childClone->myStream);
+	childClone->parentCloneid = parentClone->cloneid;
+
 }
 
 void SocialForceSimApp::proc(int p, int c, bool o, char *s) {
+	cudaStreamSynchronize(cAll[p]->myStream);
 	performClone(cAll[p], cAll[c]);
 	cAll[c]->step(stepCount);
 	if (o) {
