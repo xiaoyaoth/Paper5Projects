@@ -34,5 +34,8 @@
     <CudaCompile Include="..\TestVisual2\kernel_4_exp3_concurrency.cu">
       <Filter>Source Files</Filter>
     </CudaCompile>
+    <CudaCompile Include="..\TestVisual2\kernel_5_exp5.cu">
+      <Filter>Source Files</Filter>
+    </CudaCompile>
   </ItemGroup>
 </Project>

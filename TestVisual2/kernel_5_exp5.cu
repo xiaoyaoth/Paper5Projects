@@ -2,6 +2,9 @@
 #include <fstream>
 #include "SocialForceGPU.h"
 #include <omp.h>
+#include <thrust\sort.h>
+#include <thrust\device_ptr.h>
+#include <thrust\device_vector.h>
 
 __host__ __device__ double isInTriangleSub(double2 &p1, double2 &p2, double2 &p3)
 {
@@ -506,7 +509,7 @@ namespace AppUtil {
 void SocialForceSimApp::performClone(SocialForceClone *parentClone, SocialForceClone *childClone) {
 	// 1. copy the context of parent clone
 	cudaMemcpyAsync(childClone->context, parentClone->context, NUM_CAP * sizeof(SocialForceAgent*), cudaMemcpyDeviceToDevice, childClone->myStream);
-	cudaStreamSynchronize(childClone->myStream);
+	//cudaStreamSynchronize(childClone->myStream);
 	//cudaMemcpy(childClone->context, parentClone->context, NUM_CAP * sizeof(SocialForceAgent*), cudaMemcpyDeviceToDevice);
 	getLastCudaError("perform clone");
 
@@ -521,7 +524,7 @@ void SocialForceSimApp::performClone(SocialForceClone *parentClone, SocialForceC
 	// 3. construct passive cloning map
 	if (childClone->numElem > 0) {
 		cudaMemsetAsync(childClone->selfDev->takenMap, 0, sizeof(bool) * NUM_CELL * NUM_CELL, childClone->myStream);
-		cudaStreamSynchronize(childClone->myStream);
+		//cudaStreamSynchronize(childClone->myStream);
 		//cudaMemset(childClone->selfDev->takenMap, 0, sizeof(bool) * NUM_CELL * NUM_CELL);
 		int gSize = GRID_SIZE(childClone->numElem);
 		AppUtil::constructPassiveMap << <gSize, BLOCK_SIZE, 0, childClone->myStream >> >(childClone->selfDev, childClone->numElem);
@@ -559,8 +562,19 @@ void SocialForceSimApp::compareAndEliminate(SocialForceClone *parentClone, Socia
 	int gSize = GRID_SIZE(childClone->numElem);
 	AppUtil::compareAndEliminateKernel << <gSize, BLOCK_SIZE, 0, childClone->myStream >> >(parentClone->selfDev, childClone->selfDev, childClone->numElem);
 	//AppUtil::compareAndEliminateKernel << <gSize, BLOCK_SIZE>> >(parentClone->selfDev, childClone->selfDev, childClone->numElem);
-	gSize = GRID_SIZE(NUM_CAP);
-	AppUtil::reorderKernel << <1, 1, 0, childClone->myStream >> >(childClone->selfDev, childClone->numElem);
+	//gSize = GRID_SIZE(NUM_CAP);
+	//AppUtil::reorderKernel << <1, 1, 0, childClone->myStream >> >(childClone->selfDev, childClone->numElem);
+	
+	thrust::device_ptr<bool > takenFlagsThrustPtr(childClone->apHost->takenFlags);
+	thrust::device_ptr<void*> agentThrustPtr(childClone->apHost->agentPtrArray);
+	typedef thrust::device_vector<bool >::iterator BoolIter;
+	typedef thrust::device_vector<void*>::iterator VoidIter;
+	BoolIter key_start(takenFlagsThrustPtr);
+	BoolIter key_end(takenFlagsThrustPtr + NUM_CAP);
+	VoidIter val_start(agentThrustPtr);
+
+	thrust::sort_by_key(key_start, key_end, value_start);
+
 	//AppUtil::reorderKernel << <1, 1 >> >(childClone->selfDev, childClone->numElem);
 	cudaMemcpyAsync(childClone, childClone->selfDev, sizeof(SocialForceClone), cudaMemcpyDeviceToHost, childClone->myStream);
 	cudaStreamSynchronize(childClone->myStream);
@@ -569,7 +583,7 @@ void SocialForceSimApp::compareAndEliminate(SocialForceClone *parentClone, Socia
 }
 
 void SocialForceSimApp::proc(int p, int c, bool o, char *s) {
-	cudaStreamSynchronize(cAll[p]->myStream);
+	//cudaStreamSynchronize(cAll[p]->myStream);
 	performClone(cAll[p], cAll[c]);
 	cAll[c]->step(stepCount);
 	if (o) {
@@ -577,94 +591,6 @@ void SocialForceSimApp::proc(int p, int c, bool o, char *s) {
 			cAll[c]->output(stepCount, s);
 	}
 	compareAndEliminate(cAll[p], cAll[c]);
-}
-
-void swap(int **cloneTree, int a, int b) {
-	int t1 = cloneTree[0][a];
-	cloneTree[0][a] = cloneTree[0][b];
-	cloneTree[0][b] = t1;
-
-	t1 = cloneTree[1][a];
-	cloneTree[1][a] = cloneTree[1][b];
-	cloneTree[1][b] = t1;
-}
-
-void quickSort(int **cloneTree, int l, int r) {
-	if (l == r)
-		return;
-	int pi = l + rand() % (r - l);
-	swap(cloneTree, l, pi);
-	int pivot = cloneTree[0][l];
-
-	int i = l + 1, j = l + 1;
-	for (; j < r; j++) {
-		if (cloneTree[0][j] < pivot) {
-			swap(cloneTree, i, j);
-			i++;
-		}
-	}
-	swap(cloneTree, l, i - 1);
-	quickSort(cloneTree, l, i - 1);
-	quickSort(cloneTree, i, r);
-}
-
-void SocialForceSimApp::mst() {
-	// clone diff matrix
-	int **cloneDiff = new int*[totalClone];
-	for (int i = 0; i < totalClone; i++) {
-		cloneDiff[i] = new int[totalClone];
-		for (int j = 0; j < totalClone; j++)
-			cloneDiff[i][j] = 0;
-	}
-
-	for (int i = 0; i < totalClone; i++) {
-		for (int j = 0; j < totalClone; j++) {
-			for (int k = 0; k < NUM_PARAM; k++) {
-				if (cAll[i]->cloneParams[k] != cAll[j]->cloneParams[k])
-					cloneDiff[i][j]++;
-			}
-			wchar_t message[20];
-			swprintf_s(message, 20, L"%d ", cloneDiff[i][j]);
-			OutputDebugString(message);
-		}
-		OutputDebugString(L"\n");
-	}
-	int *parent = cloneTree[0] = new int[totalClone];
-	int *child = cloneTree[1] = new int[totalClone];
-	int *key = new int[totalClone];
-	bool *mstSet = new bool[totalClone];
-
-	for (int i = 0; i < totalClone; i++)
-		child[i] = i, key[i] = INT_MAX, mstSet[i] = false;
-
-	key[0] = 0;
-	parent[0] = -1;
-	child[0] = 0;
-
-	int count = 0;
-	while (count++ < totalClone - 1) {
-		int minKey = INT_MAX;
-		int minIdx;
-		for (int j = 0; j < totalClone; j++)
-			if (mstSet[j] == false && key[j] < minKey)
-				minKey = key[j], minIdx = j;
-		mstSet[minIdx] = true;
-
-		for (int j = 0; j < totalClone; j++)
-			if (cloneDiff[minIdx][j] && mstSet[j] == false && cloneDiff[minIdx][j] < key[j])
-				parent[j] = minIdx, key[j] = cloneDiff[minIdx][j];
-	}
-
-	quickSort(cloneTree, 0, totalClone);
-
-	for (int i = 1; i < totalClone; i++) {
-		wchar_t message[20];
-		swprintf_s(message, 20, L"%d - %d: %d\n", cloneTree[0][i], cloneTree[1][i], cloneDiff[i][parent[i]]);
-		OutputDebugString(message);
-	}
-
-	delete mstSet;
-	delete key;
 }
 
 __global__ void getLocAndColorKernel(SocialForceClone *c, double2 *loc, uchar4 *color, int *contextIds, int numElem) {

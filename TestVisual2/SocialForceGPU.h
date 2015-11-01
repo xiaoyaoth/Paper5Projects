@@ -149,7 +149,7 @@ namespace util {
 	}
 }
 
-#define BLOCK_SIZE 64
+#define BLOCK_SIZE 32
 #define GRID_SIZE(n) (n%BLOCK_SIZE==0 ? n/BLOCK_SIZE : n/BLOCK_SIZE + 1)
 
 /* application related constants */
@@ -160,7 +160,7 @@ namespace util {
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 256
+#define NUM_CAP 64
 #define NUM_PARAM 64
 #define NUM_STEP 500
 #define NUM_GOAL 3
@@ -376,16 +376,19 @@ class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
 	int paintId = 0;
-	int totalClone = 27;
+	int totalClone = -1;
 	int stepCount = 0;
 	int rootCloneId = 0;
-	int **cloneTree;
 
 	double2 *debugLocHost, *debugLocDev;
 	uchar4 *debugColorHost, *debugColorDev;
 	int *debugContextIdHost, *debugContextIdDev;
 	int *debugCidStartsHost;
 	int	*debugCidEndsHost;
+
+	int *globalParams;
+	int *globalParents;
+	vector<vector<int>> cloningTree;
 
 	void performClone(SocialForceClone *parentClone, SocialForceClone *childClone);
 	void compareAndEliminate(SocialForceClone *parentClone, SocialForceClone *childClone);
@@ -405,6 +408,10 @@ public:
 		default_random_engine randGen(13);
 		uniform_real_distribution<double> distr(0.0, 1.0);
 
+		ifstream fin;
+		fin.open("../TestVisual2/cloningTree_27.txt", ios::in);
+		fin >> totalClone;
+
 		debugLocHost = new double2[NUM_CAP];
 		debugColorHost = new uchar4[NUM_CAP];
 		debugContextIdHost = new int[NUM_CAP];
@@ -415,7 +422,6 @@ public:
 		cudaMalloc((void**)&debugContextIdDev, sizeof(int) * NUM_CAP);
 
 		cAll = new SocialForceClone*[totalClone];
-		cloneTree = new int*[2];
 		int j = 0;
 		obstacleLine globalGates[64];
 
@@ -434,14 +440,34 @@ public:
 			globalGates[4 * i + 3].init((x - dx), (y + dy), (x + dx), (y + dy));
 		}
 
+		globalParams = new int[totalClone];
+		globalParents = new int[totalClone];
+		wchar_t message[128];
+		for (int i = 0; i < totalClone; i++) {
+			fin >> globalParams[i];
+		}
+		for (int i = 1; i < totalClone; i++) {
+			fin >> globalParents[i];
+		}
+		while (!fin.eof()) {
+			int numEntry;
+			fin >> numEntry;
+			vector<int> myVec;
+			for (int i = 0; i < numEntry; i++) {
+				int t1;
+				fin >> t1;
+				myVec.push_back(t1);
+				swprintf_s(message, 128, L"%d ", t1);
+				OutputDebugString(message);
+			}
+			cloningTree.push_back(myVec);
+		}
+
 		for (int i = 0; i < totalClone; i++) {
 			int cloneParams[NUM_PARAM];
-			wchar_t message[128];
-			swprintf_s(message, L"[%d %d%d%d]\t", i, cloneParams[0] - 2, cloneParams[1] - 2, cloneParams[2] - 2);
-			OutputDebugString(message);
-			cudaMallocHost((void**)&cAll[i], sizeof(SocialForceClone));
+			int vi = globalParams[i];
 			for (int j = 0; j < NUM_PARAM / 4; j++) {
-				if (distr(randGen) > 0.1) {
+				if ((vi & 1) == 0) {
 					cloneParams[4 * j] = 0;
 					cloneParams[4 * j + 1] = 0;
 					cloneParams[4 * j + 2] = 0;
@@ -453,41 +479,39 @@ public:
 					cloneParams[4 * j + 2] = 1;
 					cloneParams[4 * j + 3] = 1;
 				}
+				vi = vi >> 1;
 			}
+
+			cudaMallocHost((void**)&cAll[i], sizeof(SocialForceClone));
 			cAll[i]->init(i, cloneParams, globalGates);
 		}
 
-		initRootClone(cAll[rootCloneId], cAll[rootCloneId]->selfDev);
-		hookPointerAndData(cAll[rootCloneId]->context, cAll[rootCloneId]->apHost->agentArray, NUM_CAP);
-
-		mst();
+		int cloneid = rootCloneId;
+		//for (int cloneid = 0; cloneid < totalClone; cloneid++) {
+			initRootClone(cAll[cloneid], cAll[cloneid]->selfDev);
+			hookPointerAndData(cAll[cloneid]->context, cAll[cloneid]->apHost->agentArray, NUM_CAP);
+		//}
 
 		return EXIT_SUCCESS;
 	}
-	void stepApp1(bool o) {
-		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
-		for (int i = 1; i < totalClone; i++)
-			proc(cloneTree[0][i], i, 0, "s5");
-		for (int j = 0; j < totalClone; j++) {
-			cAll[j]->swap();
-		}
-	}
-	void stepApp6(bool o) {
-		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
-		for (int i = 1; i < totalClone; i++)
-			proc(i - 1, i, 0, "s6");
-		for (int j = 0; j < totalClone; j++) {
-			cAll[j]->swap();
-		}
-	}
 	void stepApp(){
 		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
+		//cAll[rootCloneId]->step(stepCount);
+
+#pragma omp parallel 
+		{
+#pragma omp for
+			for (int j = 0; j < 8; j++) {
+				int tid = j;
+				while (tid < totalClone) {
+					cAll[tid]->step(stepCount);
+					tid += 8;
+				}
+			}
+		}
 
 		/*
-		
+
 		proc(0, 1, 0, "g1");
 		proc(0, 2, 0, "g1");
 		proc(0, 3, 0, "g1");
@@ -521,8 +545,41 @@ public:
 		proc(8, 17, 0, "g1");
 		proc(8, 26, 0, "g1");
 		*/
-			
-		
+
+		/*
+		for (int i = 1; i < cloningTree.size(); i++) {
+		#pragma omp parallel for
+		for (int j = 0; j < cloningTree[i].size(); j++) {
+		int tid = omp_get_thread_num();
+		if (tid == 1) {
+		int childCloneId = cloningTree[i][j];
+		int parentCloneId = globalParents[childCloneId];
+		proc(parentCloneId, childCloneId, 0, "g1");
+		}
+		}
+		}
+		*/
+
+		/*
+		for (int i = 1; i < cloningTree.size(); i++) {
+			int NCP = cloningTree[i].size();
+#pragma omp parallel 
+			{
+#pragma omp for
+			for (int j = 0; j < 8; j++) {
+				int tid = j;
+				while (tid < NCP) {
+					int childCloneId = cloningTree[i][tid];
+					int parentCloneId = globalParents[childCloneId];
+					proc(parentCloneId, childCloneId, 0, "g1");
+					tid += 8;
+				}
+			}
+			}
+		}
+		*/
+
+		/*
 #pragma omp parallel num_threads(6) 
 		{
 			int tid = omp_get_thread_num();
@@ -568,9 +625,8 @@ public:
 			case 7: proc(8, 26, 0, "g1"); break;
 			}
 		}
+		*/
 
-		//cudaDeviceSynchronize();
-		printf("\n");
 		for (int i = 0; i < totalClone; i++)
 			cAll[i]->swap();
 		cudaDeviceSynchronize();

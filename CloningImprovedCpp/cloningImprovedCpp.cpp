@@ -1,4 +1,4 @@
-#include "../TestVisual2/SocialForce_7.h"
+#include "../TestVisual2/SocialForceGPU.h"
 #include <iostream>
 
 //kernel_4_exp3_concurrency is used for experiment
@@ -28,18 +28,18 @@ double GetCounter()
 
 int main(int argc, char **argv) {
 	fstream fout;
-	fout.open("time_27_clones.txt", fstream::out);
+	fout.open("time_27_clones_CPU.txt", fstream::out);
 
 	SocialForceSimApp app1;
 	app1.initSimClone();
 	StartCounter();
-	for (int i = 0; i < 1000; i++) {
+	for (int i = 0; i < 100; i++) {
 		cout << i << " ";
 		app1.stepApp();
 		//fout << i / 4 << "\t";
 		fout << GetCounter() << "\t";
-		for (int i = 0; i < app1.totalClone; i++)
-			fout << app1.cAll[i]->numElem << "\t";
+		//for (int i = 0; i < app1.totalClone; i++)
+		//	fout << app1.cAll[i]->numElem << "\t";
 		fout << endl;
 	}
 	cout << "step1: " << (GetCounter()) << endl;

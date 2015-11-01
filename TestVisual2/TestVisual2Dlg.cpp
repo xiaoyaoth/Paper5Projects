@@ -15,9 +15,9 @@
 //#include "SocialForce_8.h"		// previous entire parameter exploration strategy with flags
 //#include "SocialForce_7.h"		// new strategy old scenario
 //#include "SocialForce_5.h"		// two obstacle scenario
-#include "SocialForce_9.h"		// exp5 complex scenario
+//#include "SocialForce_9.h"		// exp5 complex scenario
 //#include "SocialForceGPU2.h"
-//#include "SocialForceGPU.h"		// exp5 complex scenario GPU
+#include "SocialForceGPU.h"		// exp5 complex scenario GPU
 
 extern "C" void runTest();
 

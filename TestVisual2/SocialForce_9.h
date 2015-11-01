@@ -131,7 +131,7 @@ int g_stepCount = 0;
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 32
+#define NUM_CAP 64
 #define NUM_PARAM 64
 #define NUM_STEP 500
 #define NUM_GOAL 3
@@ -634,10 +634,9 @@ class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
 	int paintId = 0;
-	int totalClone = 1000;
+	int totalClone = -1;
 	int &stepCount = g_stepCount;
 	int rootCloneId = 0;
-	int **cloneTree;
 
 	int *globalParams;
 	int *globalParents;
@@ -645,12 +644,13 @@ public:
 
 	int initSimClone() {
 		srand(0);
-		cAll = new SocialForceClone*[totalClone];
-		cloneTree = new int*[2];
-		int j = 0;
-
 		ifstream fin;
-		fin.open("cloningTree.txt", ios::in);
+		fin.open("cloningTree_27.txt", ios::in);
+
+		fin >> totalClone;
+
+		cAll = new SocialForceClone*[totalClone];
+		int j = 0;
 		
 		globalParams = new int[totalClone];
 		globalParents = new int[totalClone];
@@ -683,8 +683,8 @@ public:
 				x = (0.1 + 0.8 * distr(randGen)) * ENV_DIM;
 				y = (0.1 + 0.8 * distr(randGen)) * ENV_DIM;
 			}
-			double dx = (0.01 + 0.2 * distr(randGen)) * ENV_DIM;
-			double dy = (0.01 + 0.2 * distr(randGen)) * ENV_DIM;
+			double dx = (0.01 + 0.02 * distr(randGen)) * ENV_DIM;
+			double dy = (0.01 + 0.02 * distr(randGen)) * ENV_DIM;
 			globalGates[4 * i].init((x - dx), (y - dy), (x - dx), (y + dy));
 			globalGates[4 * i + 1].init((x + dx), (y - dy), (x + dx), (y + dy));
 			globalGates[4 * i + 2].init((x - dx), (y - dy), (x + dx), (y - dy));
@@ -695,7 +695,7 @@ public:
 			int cloneParams[NUM_PARAM];
 			int vi = globalParams[i];
 			for (int j = 0; j < NUM_PARAM / 4; j++) {
-				if (vi & 1 == 0) {
+				if ((vi & 1) == 0) {
 					cloneParams[4 * j] = 0;
 					cloneParams[4 * j + 1] = 0;
 					cloneParams[4 * j + 2] = 0;
@@ -845,38 +845,13 @@ public:
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);
 
-		proc(0, 1, 0, "g1");
-		proc(0, 2, 0, "g1");
-		proc(0, 3, 0, "g1");
-		proc(0, 6, 0, "g1");
-		proc(0, 9, 0, "g1");
-		proc(0, 18, 0, "g1");
-
-		//cudaDeviceSynchronize();
-
-		proc(1, 4, 0, "g1");
-		proc(1, 7, 0, "g1");
-		proc(1, 10, 0, "g1");
-		proc(1, 19, 0, "g1");
-		proc(2, 5, 0, "g1");
-		proc(2, 8, 0, "g1");
-		proc(2, 11, 0, "g1");
-		proc(2, 20, 0, "g1");
-		proc(3, 12, 0, "g1");
-		proc(3, 21, 0, "g1");
-		proc(6, 15, 0, "g1");
-		proc(6, 24, 0, "g1");
-
-		//cudaDeviceSynchronize();
-
-		proc(4, 13, 0, "g1");
-		proc(4, 22, 0, "g1");
-		proc(7, 16, 0, "g1");
-		proc(7, 25, 0, "g1");
-		proc(5, 14, 0, "g1");
-		proc(5, 23, 0, "g1");
-		proc(8, 17, 0, "g1");
-		proc(8, 26, 0, "g1");
+		for (int i = 1; i < cloningTree.size(); i++) {
+			for (int j = 0; j < cloningTree[i].size(); j++) {
+				int childCloneId = cloningTree[i][j];
+				int parentCloneId = globalParents[childCloneId];
+				proc(parentCloneId, childCloneId, 0, "g1");
+			}
+		}
 
 		for (int i = 0; i < totalClone; i++)
 			cAll[i]->swap();
