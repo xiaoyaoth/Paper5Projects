@@ -28,7 +28,7 @@ double GetCounter()
 
 int main(int argc, char **argv) {
 	fstream fout;
-	fout.open("time_27_clones_CPU.txt", fstream::out);
+	fout.open("time_27_clones_GPU_clone.txt", fstream::out);
 
 	SocialForceSimApp app1;
 	app1.initSimClone();

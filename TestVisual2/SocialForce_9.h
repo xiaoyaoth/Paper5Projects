@@ -131,7 +131,7 @@ int g_stepCount = 0;
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 64
+#define NUM_CAP 256
 #define NUM_PARAM 64
 #define NUM_STEP 500
 #define NUM_GOAL 3
@@ -651,7 +651,7 @@ public:
 
 		cAll = new SocialForceClone*[totalClone];
 		int j = 0;
-		
+
 		globalParams = new int[totalClone];
 		globalParents = new int[totalClone];
 		wchar_t message[128];
@@ -712,20 +712,23 @@ public:
 			cAll[i] = new SocialForceClone(i, cloneParams, globalGates);
 		}
 
-		SocialForceAgent *agents = cAll[rootCloneId]->ap->agentArray;
-		SocialForceAgent **context = cAll[rootCloneId]->context;
+		int cloneid = 0;
+		//for (cloneid = 0; cloneid < totalClone; cloneid++) {
+			SocialForceAgent *agents = cAll[cloneid]->ap->agentArray;
+			SocialForceAgent **context = cAll[cloneid]->context;
 
-		for (int i = 0; i < NUM_CAP; i++) {
-			agents[i].myClone = cAll[rootCloneId];
-			agents[i].contextId = i;
-			agents[i].color = cAll[rootCloneId]->color;
-			agents[i].init(i);
-			context[i] = &agents[i];
-		}
+			for (int i = 0; i < NUM_CAP; i++) {
+				agents[i].myClone = cAll[cloneid];
+				agents[i].contextId = i;
+				agents[i].color = cAll[cloneid]->color;
+				agents[i].init(i);
+				context[i] = &agents[i];
+			}
 
-		cAll[rootCloneId]->numElem = NUM_CAP;
-		for (int j = 0; j < NUM_CAP; j++)
-			cAll[rootCloneId]->cloneFlag[j] = true;
+			cAll[cloneid]->numElem = NUM_CAP;
+			for (int j = 0; j < NUM_CAP; j++)
+				cAll[cloneid]->cloneFlag[j] = true;
+		//}
 
 		//mst();
 
@@ -843,8 +846,14 @@ public:
 	}
 	void stepApp(){
 		stepCount++;
-		cAll[rootCloneId]->step(stepCount);
+		
+		/*
+		for (int i = 0; i < totalClone; i++)
+			cAll[i]->step(stepCount);
+			*/
 
+		
+		cAll[rootCloneId]->step(stepCount);
 		for (int i = 1; i < cloningTree.size(); i++) {
 			for (int j = 0; j < cloningTree[i].size(); j++) {
 				int childCloneId = cloningTree[i][j];
@@ -852,6 +861,7 @@ public:
 				proc(parentCloneId, childCloneId, 0, "g1");
 			}
 		}
+		
 
 		for (int i = 0; i < totalClone; i++)
 			cAll[i]->swap();

@@ -2,9 +2,6 @@
 #include <fstream>
 #include "SocialForceGPU.h"
 #include <omp.h>
-#include <thrust\sort.h>
-#include <thrust\device_ptr.h>
-#include <thrust\device_vector.h>
 
 __host__ __device__ double isInTriangleSub(double2 &p1, double2 &p2, double2 &p3)
 {
@@ -496,7 +493,7 @@ namespace AppUtil {
 			for (; j < r; j++) {
 				if (c->ap->takenFlags[j] == true) {
 					swap<SocialForceAgent*>(c->ap->agentPtrArray, i, j);
-					swap<bool>(c->ap->takenFlags, i, j);
+					swap<int>(c->ap->takenFlags, i, j);
 					i++;
 				}
 			}
@@ -561,19 +558,9 @@ void SocialForceSimApp::compareAndEliminate(SocialForceClone *parentClone, Socia
 	if (childClone->numElem == 0) return;
 	int gSize = GRID_SIZE(childClone->numElem);
 	AppUtil::compareAndEliminateKernel << <gSize, BLOCK_SIZE, 0, childClone->myStream >> >(parentClone->selfDev, childClone->selfDev, childClone->numElem);
-	//AppUtil::compareAndEliminateKernel << <gSize, BLOCK_SIZE>> >(parentClone->selfDev, childClone->selfDev, childClone->numElem);
-	//gSize = GRID_SIZE(NUM_CAP);
-	//AppUtil::reorderKernel << <1, 1, 0, childClone->myStream >> >(childClone->selfDev, childClone->numElem);
-	
-	thrust::device_ptr<bool > takenFlagsThrustPtr(childClone->apHost->takenFlags);
-	thrust::device_ptr<void*> agentThrustPtr(childClone->apHost->agentPtrArray);
-	typedef thrust::device_vector<bool >::iterator BoolIter;
-	typedef thrust::device_vector<void*>::iterator VoidIter;
-	BoolIter key_start(takenFlagsThrustPtr);
-	BoolIter key_end(takenFlagsThrustPtr + NUM_CAP);
-	VoidIter val_start(agentThrustPtr);
 
-	thrust::sort_by_key(key_start, key_end, value_start);
+	gSize = GRID_SIZE(NUM_CAP);
+	AppUtil::reorderKernel << <1, 1, 0, childClone->myStream >> >(childClone->selfDev, childClone->numElem);
 
 	//AppUtil::reorderKernel << <1, 1 >> >(childClone->selfDev, childClone->numElem);
 	cudaMemcpyAsync(childClone, childClone->selfDev, sizeof(SocialForceClone), cudaMemcpyDeviceToHost, childClone->myStream);

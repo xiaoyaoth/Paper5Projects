@@ -40,6 +40,7 @@ public:
 	int screenWidth;
 	int screenHeight;
 	int fps;
+	int isPaused = 0;
 
 	afx_msg void OnLButtonDblClk(UINT nFlags, CPoint point);
 	afx_msg BOOL OnMouseWheel(UINT nFlags, short zDelta, CPoint pt);

@@ -187,7 +187,8 @@ HCURSOR CTestVisual2Dlg::OnQueryDragIcon()
 void CTestVisual2Dlg::OnTimer(UINT_PTR nIDEvent)
 {
 	// TODO: Add your message handler code here and/or call default
-	cloneApp.stepApp();
+	if (!isPaused)
+		cloneApp.stepApp();
 	myDraw();
 
 	if (nIDEvent == 1){
@@ -302,19 +303,19 @@ void CTestVisual2Dlg::myDraw()
 		_memDC.Ellipse(x - 5, y - 5, x + 5, y + 5);
 
 		// draw agent id;
-		CFont font;
-		font.CreatePointFont(80, L"Consolas", &_memDC);
-		CGdiObject *pOldFont = _memDC.SelectObject(&font);
-		CPen p2(PS_SOLID, 1, RGB(0, 0, 0));
-		_memDC.SelectObject(p2);
-		CRect rect(x - 10, y - 10, x + 10, y + 10);
-		CString str;
-#ifdef USE_GPU
-		str.Format(L"%d", cloneApp.debugContextIdHost[i]);
-#else
-		str.Format(L"%d", ag.contextId);
-#endif
-		_memDC.DrawText(str, rect, DT_CENTER);
+//		CFont font;
+//		font.CreatePointFont(80, L"Consolas", &_memDC);
+//		CGdiObject *pOldFont = _memDC.SelectObject(&font);
+//		CPen p2(PS_SOLID, 1, RGB(0, 0, 0));
+//		_memDC.SelectObject(p2);
+//		CRect rect(x - 10, y - 10, x + 10, y + 10);
+//		CString str;
+//#ifdef USE_GPU
+//		str.Format(L"%d", cloneApp.debugContextIdHost[i]);
+//#else
+//		str.Format(L"%d", ag.contextId);
+//#endif
+//		_memDC.DrawText(str, rect, DT_CENTER);
 	}
 	//_memDC.SelectObject(pOldFont);
 
@@ -345,10 +346,9 @@ void CTestVisual2Dlg::OnLButtonDblClk(UINT nFlags, CPoint point)
 BOOL CTestVisual2Dlg::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 {
 	// TODO: Add your message handler code here and/or call default
-	fps += zDelta / 60;
-	if (fps < 10) fps = 10;
-	if (fps > 100) fps = 100;
-	SetTimer(1, 1000 / fps, NULL);
+	cloneApp.paintId += zDelta / 60;
+	while (cloneApp.paintId < 0) cloneApp.paintId += cloneApp.totalClone;
+	cloneApp.paintId = cloneApp.paintId % cloneApp.totalClone;
 
 	return CDialogEx::OnMouseWheel(nFlags, zDelta, pt);
 }
@@ -370,6 +370,8 @@ void CTestVisual2Dlg::OnKeyUp(UINT nChar, UINT nRepCnt, UINT nFlags)
 		cloneApp.paintId = (cloneApp.paintId + 1) % cloneApp.totalClone;
 	if (nChar == VK_DOWN)
 		cloneApp.paintId = (cloneApp.paintId - 1 + cloneApp.totalClone) % cloneApp.totalClone;
+	if (nChar == VK_SPACE)
+		isPaused = (isPaused + 1) % 2;
 
 	CDialogEx::OnKeyUp(nChar, nRepCnt, nFlags);
 }

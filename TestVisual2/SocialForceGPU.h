@@ -1,13 +1,13 @@
 #ifndef SOCIAL_FORCE_GPU_H
 #define SOCIAL_FORCE_GPU_H
 
-#include <vector>
 #include <ctime>
 #include <Windows.h>
 #include <algorithm>
 #include <fstream>
 #include "inc\helper_math.h"
 
+#include <vector>
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include <curand_kernel.h>
@@ -15,6 +15,7 @@
 #include <random>
 
 #define USE_GPU 1
+#define USE_CLONE 0
 
 using namespace std;
 
@@ -160,7 +161,7 @@ namespace util {
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 64
+#define NUM_CAP 256
 #define NUM_PARAM 64
 #define NUM_STEP 500
 #define NUM_GOAL 3
@@ -220,14 +221,14 @@ class AgentPool {
 public:
 	SocialForceAgent *agentArray;
 	SocialForceAgent **agentPtrArray;
-	bool *takenFlags;
+	int *takenFlags;
 	//int numElem;
 
 	__host__ AgentPool(int numCap) {
 		cudaMalloc((void**)&agentArray, sizeof(SocialForceAgent) * numCap * 1.5);
 		cudaMalloc((void**)&agentPtrArray, sizeof(SocialForceAgent*) * numCap);
-		cudaMalloc((void**)&takenFlags, sizeof(bool) * numCap);
-		cudaMemset(takenFlags, 0, sizeof(bool) * numCap);
+		cudaMalloc((void**)&takenFlags, sizeof(int) * numCap);
+		cudaMemset(takenFlags, 0, sizeof(int) * numCap);
 		
 		hookPointerAndData(agentPtrArray, agentArray, numCap);
 
@@ -240,7 +241,7 @@ public:
 		for (; j < r; j++) {
 			if (takenFlags[j] == true) {
 				swap<SocialForceAgent*>(agentPtrArray, i, j);
-				swap<bool>(takenFlags, i, j);
+				swap<int>(takenFlags, i, j);
 				i++;
 			}
 		}
@@ -486,18 +487,25 @@ public:
 			cAll[i]->init(i, cloneParams, globalGates);
 		}
 
+#if USE_CLONE == 1
 		int cloneid = rootCloneId;
-		//for (int cloneid = 0; cloneid < totalClone; cloneid++) {
+		initRootClone(cAll[cloneid], cAll[cloneid]->selfDev);
+		hookPointerAndData(cAll[cloneid]->context, cAll[cloneid]->apHost->agentArray, NUM_CAP);
+
+#else
+		int cloneid = rootCloneId;
+		for (cloneid = 0; cloneid < totalClone; cloneid++) {
 			initRootClone(cAll[cloneid], cAll[cloneid]->selfDev);
 			hookPointerAndData(cAll[cloneid]->context, cAll[cloneid]->apHost->agentArray, NUM_CAP);
-		//}
+	}
+#endif
 
 		return EXIT_SUCCESS;
 	}
 	void stepApp(){
 		stepCount++;
-		//cAll[rootCloneId]->step(stepCount);
 
+#if USE_CLONE == 0
 #pragma omp parallel 
 		{
 #pragma omp for
@@ -509,58 +517,10 @@ public:
 				}
 			}
 		}
-
-		/*
-
-		proc(0, 1, 0, "g1");
-		proc(0, 2, 0, "g1");
-		proc(0, 3, 0, "g1");
-		proc(0, 6, 0, "g1");
-		proc(0, 9, 0, "g1");
-		proc(0, 18, 0, "g1");
-
-		cudaDeviceSynchronize();
-
-		proc(1, 4, 0, "g1");
-		proc(1, 7, 0, "g1");
-		proc(1, 10, 0, "g1");
-		proc(1, 19, 0, "g1");
-		proc(2, 5, 0, "g1");
-		proc(2, 8, 0, "g1");
-		proc(2, 11, 0, "g1");
-		proc(2, 20, 0, "g1");
-		proc(3, 12, 0, "g1");
-		proc(3, 21, 0, "g1");
-		proc(6, 15, 0, "g1");
-		proc(6, 24, 0, "g1");
-
-		cudaDeviceSynchronize();
-
-		proc(4, 13, 0, "g1");
-		proc(4, 22, 0, "g1");
-		proc(7, 16, 0, "g1");
-		proc(7, 25, 0, "g1");
-		proc(5, 14, 0, "g1");
-		proc(5, 23, 0, "g1");
-		proc(8, 17, 0, "g1");
-		proc(8, 26, 0, "g1");
-		*/
-
-		/*
-		for (int i = 1; i < cloningTree.size(); i++) {
-		#pragma omp parallel for
-		for (int j = 0; j < cloningTree[i].size(); j++) {
-		int tid = omp_get_thread_num();
-		if (tid == 1) {
-		int childCloneId = cloningTree[i][j];
-		int parentCloneId = globalParents[childCloneId];
-		proc(parentCloneId, childCloneId, 0, "g1");
-		}
-		}
-		}
-		*/
-
-		/*
+		
+#else
+		
+		cAll[rootCloneId]->step(stepCount);
 		for (int i = 1; i < cloningTree.size(); i++) {
 			int NCP = cloningTree[i].size();
 #pragma omp parallel 
@@ -577,55 +537,8 @@ public:
 			}
 			}
 		}
-		*/
-
-		/*
-#pragma omp parallel num_threads(6) 
-		{
-			int tid = omp_get_thread_num();
-			switch (tid) {
-			case 0: proc(0, 1, 0, "g1"); break;
-			case 1: proc(0, 2, 0, "g1"); break;
-			case 2: proc(0, 3, 0, "g1"); break;
-			case 3: proc(0, 6, 0, "g1"); break;
-			case 4: proc(0, 9, 0, "g1"); break;
-			case 5: proc(0, 18, 0, "g1"); break;
-			}
-		}
-#pragma omp parallel num_threads(12) 
-		{
-			int tid = omp_get_thread_num();
-			switch (tid) {
-			case 0: proc(1, 4, 0, "g1"); break;
-			case 1: proc(1, 7, 0, "g1"); break;
-			case 2: proc(1, 10, 0, "g1"); break;
-			case 3: proc(1, 19, 0, "g1"); break;
-			case 4: proc(2, 5, 0, "g1"); break;
-			case 5: proc(2, 8, 0, "g1"); break;
-			case 6: proc(2, 11, 0, "g1"); break;
-			case 7: proc(2, 20, 0, "g1"); break;
-			case 8: proc(3, 12, 0, "g1"); break;
-			case 9: proc(3, 21, 0, "g1"); break;
-			case 10: proc(6, 15, 0, "g1"); break;
-			case 11: proc(6, 24, 0, "g1"); break;
-			}
-		}
-
-#pragma omp parallel num_threads(8) 
-		{
-			int tid = omp_get_thread_num();
-			switch (tid) {
-			case 0: proc(4, 13, 0, "g1"); break;
-			case 1: proc(4, 22, 0, "g1"); break;
-			case 2: proc(7, 16, 0, "g1"); break;
-			case 3: proc(7, 25, 0, "g1"); break;
-			case 4: proc(5, 14, 0, "g1"); break;
-			case 5: proc(5, 23, 0, "g1"); break;
-			case 6: proc(8, 17, 0, "g1"); break;
-			case 7: proc(8, 26, 0, "g1"); break;
-			}
-		}
-		*/
+		
+#endif
 
 		for (int i = 0; i < totalClone; i++)
 			cAll[i]->swap();
