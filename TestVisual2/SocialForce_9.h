@@ -131,16 +131,19 @@ int g_stepCount = 0;
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 256
+#define NUM_CAP 1024
 #define NUM_PARAM 64
 #define NUM_STEP 500
 #define NUM_GOAL 3
-#define ENV_DIM 64
+#define ENV_DIM 256
 #define NUM_CELL 16
-#define CELL_DIM 4
+#define CELL_DIM 16
 #define RADIUS_I 6
 
 #define NUM_WALLS 12
+
+#define USE_CLONE 1
+#define DRAW_OBSTACLE
 
 default_random_engine randGen(13);
 uniform_real_distribution<double> distr(0.0, 1.0);
@@ -585,12 +588,12 @@ void SocialForceAgent::init(int idx) {
 
 	SocialForceAgentData & dataLocal = this->data; //= &sfModel->originalAgents->dataArray[dataSlot];
 	dataLocal.agentPtr = this;
-	dataLocal.loc.x = (0.3 + 0.5 * distr(randGen)) * ENV_DIM;
-	dataLocal.loc.y = (0.3 + 0.5 * distr(randGen)) * ENV_DIM;
+	dataLocal.loc.x = (0.3 + 0.4 * distr(randGen)) * ENV_DIM;
+	dataLocal.loc.y = (0.3 + 0.4 * distr(randGen)) * ENV_DIM;
 
 	while (isInRects(dataLocal.loc.x, dataLocal.loc.y, myClone->gates)) {
-		dataLocal.loc.x = (0.2 + 0.6 * distr(randGen)) * ENV_DIM;
-		dataLocal.loc.y = (0.2 + 0.6 * distr(randGen)) * ENV_DIM;
+		dataLocal.loc.x = (0.3 + 0.4 * distr(randGen)) * ENV_DIM;
+		dataLocal.loc.y = (0.3 + 0.4 * distr(randGen)) * ENV_DIM;
 	}
 
 	dataLocal.velocity.x = 2;//4 * (this->random->uniform()-0.5);
@@ -645,7 +648,7 @@ public:
 	int initSimClone() {
 		srand(0);
 		ifstream fin;
-		fin.open("cloningTree_27.txt", ios::in);
+		fin.open("../TestVisual2/cloningTree_27.txt", ios::in);
 
 		fin >> totalClone;
 
@@ -661,7 +664,9 @@ public:
 		for (int i = 1; i < totalClone; i++) {
 			fin >> globalParents[i];
 		}
-		while (!fin.eof()) {
+		int treeLevel;
+		fin >> treeLevel;
+		for (int ll = 0; ll < treeLevel; ll++) {
 			int numEntry;
 			fin >> numEntry;
 			vector<int> myVec;
@@ -679,7 +684,7 @@ public:
 		for (int i = 0; i < NUM_PARAM / 4; i++) {
 			double x = (0.1 + 0.8 * distr(randGen)) * ENV_DIM;
 			double y = (0.1 + 0.8 * distr(randGen)) * ENV_DIM;
-			while (isInRectSub(x, y, 0.4 * ENV_DIM, 0.4 * ENV_DIM, 0.6 * ENV_DIM, 0.6 * ENV_DIM)) {
+			while (isInRectSub(x, y, 0.3 * ENV_DIM, 0.3 * ENV_DIM, 0.7 * ENV_DIM, 0.7 * ENV_DIM)) {
 				x = (0.1 + 0.8 * distr(randGen)) * ENV_DIM;
 				y = (0.1 + 0.8 * distr(randGen)) * ENV_DIM;
 			}
@@ -713,7 +718,9 @@ public:
 		}
 
 		int cloneid = 0;
-		//for (cloneid = 0; cloneid < totalClone; cloneid++) {
+#if USE_CLONE == 0
+		for (cloneid = 0; cloneid < totalClone; cloneid++) {
+#endif
 			SocialForceAgent *agents = cAll[cloneid]->ap->agentArray;
 			SocialForceAgent **context = cAll[cloneid]->context;
 
@@ -728,9 +735,9 @@ public:
 			cAll[cloneid]->numElem = NUM_CAP;
 			for (int j = 0; j < NUM_CAP; j++)
 				cAll[cloneid]->cloneFlag[j] = true;
-		//}
-
-		//mst();
+#if USE_CLONE == 0
+		}
+#endif
 
 		return EXIT_SUCCESS;
 	}
@@ -847,21 +854,21 @@ public:
 	void stepApp(){
 		stepCount++;
 		
-		/*
+#if USE_CLONE == 0
+#pragma omp parallel for
 		for (int i = 0; i < totalClone; i++)
 			cAll[i]->step(stepCount);
-			*/
-
-		
+#else 		
 		cAll[rootCloneId]->step(stepCount);
 		for (int i = 1; i < cloningTree.size(); i++) {
+#pragma omp parallel for
 			for (int j = 0; j < cloningTree[i].size(); j++) {
 				int childCloneId = cloningTree[i][j];
 				int parentCloneId = globalParents[childCloneId];
 				proc(parentCloneId, childCloneId, 0, "g1");
 			}
 		}
-		
+#endif		
 
 		for (int i = 0; i < totalClone; i++)
 			cAll[i]->swap();

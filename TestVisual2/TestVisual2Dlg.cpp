@@ -13,11 +13,11 @@
 //#include "SocialForce_6.h" // updated neigbor searching strategy
 //#include "SocialForceGPU.h"
 //#include "SocialForce_8.h"		// previous entire parameter exploration strategy with flags
-//#include "SocialForce_7.h"		// new strategy old scenario
+#include "SocialForce_7.h"		// new strategy old scenario
 //#include "SocialForce_5.h"		// two obstacle scenario
-//#include "SocialForce_9.h"		// exp5 complex scenario
+//#include "SocialForce_9.h"			// exp5 complex scenario
 //#include "SocialForceGPU2.h"
-#include "SocialForceGPU.h"		// exp5 complex scenario GPU
+//#include "SocialForceGPU.h"		// exp5 complex scenario GPU
 
 extern "C" void runTest();
 
@@ -271,6 +271,7 @@ void CTestVisual2Dlg::myDraw()
 		_memDC.LineTo(x, y);
 	}
 
+#ifdef DRAW_OBSTACLE
 	// draw gate 
 	for (int i = 0; i < NUM_PARAM; i++) {
 		CPen p(PS_SOLID, 5, RGB(0, 0, 0));
@@ -282,8 +283,8 @@ void CTestVisual2Dlg::myDraw()
 		y = c->gates[i].ey / ENV_DIM * screenHeight;
 		_memDC.LineTo(x, y);
 	}
+#endif
 	
-
 	// draw agent
 	for (int i = 0; i < NUM_CAP; i++) {
 #ifdef USE_GPU
@@ -300,7 +301,7 @@ void CTestVisual2Dlg::myDraw()
 		_memDC.SelectObject(b);
 		double x = loc.x / ENV_DIM * screenWidth;
 		double y = loc.y / ENV_DIM * screenHeight;
-		_memDC.Ellipse(x - 5, y - 5, x + 5, y + 5);
+		_memDC.Ellipse(x - 3, y - 3, x + 3, y + 3);
 
 		// draw agent id;
 //		CFont font;

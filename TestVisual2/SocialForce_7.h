@@ -770,17 +770,40 @@ class SocialForceSimApp {
 public:
 	SocialForceClone **cAll;
 	int paintId = 0;
-	int totalClone = 27;
+	int totalClone = -1;
 	int &stepCount = g_stepCount;
 	int rootCloneId = 0;
-	int **cloneTree;
+
+	int *globalParents;
+	vector<vector<int>> cloningTree;
 
 	int initSimClone() {
 		srand(0);
 
+		ifstream fin;
+		fin.open("../TestVisual2/exp3CloneTree3.txt", ios::in);
+		fin >> totalClone;
+
 		cAll = new SocialForceClone*[totalClone];
-		cloneTree = new int*[2];
-		int j = 0;
+
+		globalParents = new int[totalClone];
+		for (int i = 1; i < totalClone; i++) {
+			fin >> globalParents[i];
+		}
+
+		int treeLevel;
+		fin >> treeLevel;
+		for (int ll = 0; ll < treeLevel; ll++) {
+			int numEntry;
+			fin >> numEntry;
+			vector<int> myVec;
+			for (int i = 0; i < numEntry; i++) {
+				int t1;
+				fin >> t1;
+				myVec.push_back(t1);
+			}
+			cloningTree.push_back(myVec);
+		}
 
 		for (int i = 0; i < totalClone; i++) {
 			int cloneParams[NUM_PARAM];
@@ -804,8 +827,6 @@ public:
 		cAll[rootCloneId]->numElem = NUM_CAP;
 		for (int j = 0; j < NUM_CAP; j++)
 			cAll[rootCloneId]->cloneFlag[j] = true;
-
-		mst();
 
 		return EXIT_SUCCESS;
 	}
@@ -914,95 +935,28 @@ public:
 		//cAll[c]->output2(stepCount, s);
 		compareAndEliminate(cAll[p], cAll[c]);
 	}
-	void swap(int **cloneTree, int a, int b) {
-		int t1 = cloneTree[0][a];
-		cloneTree[0][a] = cloneTree[0][b];
-		cloneTree[0][b] = t1;
 
-		t1 = cloneTree[1][a];
-		cloneTree[1][a] = cloneTree[1][b];
-		cloneTree[1][b] = t1;
-	}
-	void quickSort(int **cloneTree, int l, int r) {
-		if (l == r)
-			return;
-		int pi = l + rand() % (r - l);
-		swap(cloneTree, l, pi);
-		int pivot = cloneTree[0][l];
+	void stepApp() {
+		// exp3CloneTree1: MST
+		// exp3CloneTree2: FLAT
+		// exp3CloneTree3: TALL
+		// exp3CloneTree4: RAND1
+		// exp3CloneTree5: RAND2
+		// exp3CloneTree6: RAND3
+		stepCount++;
 
-		int i = l + 1, j = l + 1;
-		for (; j < r; j++) {
-			if (cloneTree[0][j] < pivot) {
-				swap(cloneTree, i, j);
-				i++;
+		cAll[rootCloneId]->step(stepCount);
+		for (int i = 1; i < cloningTree.size(); i++) {
+			for (int j = 0; j < cloningTree[i].size(); j++) {
+				int childCloneId = cloningTree[i][j];
+				int parentCloneId = globalParents[childCloneId];
+				proc(parentCloneId, childCloneId, 0, "g1");
 			}
 		}
-		swap(cloneTree, l, i - 1);
-		quickSort(cloneTree, l, i - 1);
-		quickSort(cloneTree, i, r);
-	}
-
-	void mst() {
-		// clone diff matrix
-		int **cloneDiff = new int*[totalClone];
-		for (int i = 0; i < totalClone; i++) {
-			cloneDiff[i] = new int[totalClone];
-			for (int j = 0; j < totalClone; j++)
-				cloneDiff[i][j] = 0;
-		}
-
-		for (int i = 0; i < totalClone; i++) {
-			for (int j = 0; j < totalClone; j++) {
-				for (int k = 0; k < NUM_PARAM; k++) {
-					if (cAll[i]->cloneParams[k] != cAll[j]->cloneParams[k]) {
-						//cloneDiff[i][j] += cAll[i]->cloneParams[k] * paramWeight[k] + cAll[j]->cloneParams[k] * paramWeight[k];
-						cloneDiff[i][j]++;
-					}
-				}
-				wchar_t message[20];
-				swprintf_s(message, 20, L"%d ", cloneDiff[i][j]);
-				OutputDebugString(message);
-			}
-			OutputDebugString(L"\n");
-		}
-		int *parent = cloneTree[0] = new int[totalClone];
-		int *child = cloneTree[1] = new int[totalClone];
-		int *key = new int[totalClone];
-		bool *mstSet = new bool[totalClone];
 
 		for (int i = 0; i < totalClone; i++)
-			child[i] = i, key[i] = INT_MAX, mstSet[i] = false;
-
-		key[0] = 0;
-		parent[0] = -1;
-		child[0] = 0;
-
-		int count = 0;
-		while (count++ < totalClone - 1) {
-			int minKey = INT_MAX;
-			int minIdx;
-			for (int j = 0; j < totalClone; j++)
-				if (mstSet[j] == false && key[j] < minKey)
-					minKey = key[j], minIdx = j;
-			mstSet[minIdx] = true;
-
-			for (int j = 0; j < totalClone; j++)
-				if (cloneDiff[minIdx][j] && mstSet[j] == false && cloneDiff[minIdx][j] < key[j])
-					parent[j] = minIdx, key[j] = cloneDiff[minIdx][j];
-		}
-
-		quickSort(cloneTree, 0, totalClone);
-
-		for (int i = 0; i < totalClone; i++) {
-			wchar_t message[20];
-			swprintf_s(message, 20, L"%d - %d: %d\n", cloneTree[0][i], cloneTree[1][i], cloneDiff[i][parent[i]]);
-			OutputDebugString(message);
-		}
-
-		delete mstSet;
-		delete key;
+			cAll[i]->swap();
 	}
-
 	void stepApp0(){
 		// exp3. tree structure, MST.
 
@@ -1080,7 +1034,7 @@ public:
 		for (int i = 0; i < totalClone; i++)
 			cAll[i]->swap();
 	}
-	void stepApp() {
+	void stepApp2() {
 		// exp3. tree structure, tall tree.
 		stepCount++;
 		cAll[rootCloneId]->step(stepCount);

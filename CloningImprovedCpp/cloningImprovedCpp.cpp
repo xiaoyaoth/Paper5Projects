@@ -1,4 +1,4 @@
-#include "../TestVisual2/SocialForceGPU.h"
+#include "../TestVisual2/SocialForce_7.h"
 #include <iostream>
 
 //kernel_4_exp3_concurrency is used for experiment
@@ -28,7 +28,7 @@ double GetCounter()
 
 int main(int argc, char **argv) {
 	fstream fout;
-	fout.open("time_27_clones_GPU_clone.txt", fstream::out);
+	fout.open("exp3.txt", fstream::out);
 
 	SocialForceSimApp app1;
 	app1.initSimClone();

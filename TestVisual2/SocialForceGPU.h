@@ -15,7 +15,7 @@
 #include <random>
 
 #define USE_GPU 1
-#define USE_CLONE 0
+#define USE_CLONE 1
 
 using namespace std;
 
@@ -161,16 +161,17 @@ namespace util {
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 256
+#define NUM_CAP 1024
 #define NUM_PARAM 64
 #define NUM_STEP 500
 #define NUM_GOAL 3
-#define ENV_DIM 64
+#define ENV_DIM 256
 #define NUM_CELL 16
-#define CELL_DIM 4
+#define CELL_DIM 16
 #define RADIUS_I 6
 
 #define NUM_WALLS 12
+#define DRAW_OBSTACLE
 
 class SocialForceAgent;
 class SocialForceClone;
@@ -196,10 +197,6 @@ public:
 	SocialForceAgentData dataCopy;
 	double2 goalSeq[NUM_GOAL];
 
-	int flagCloning[NUM_PARAM];
-	int flagCloned[NUM_PARAM];
-	int cloneIdArray[NUM_PARAM];
-
 	__device__ double correctCrossBoader(double val, double limit);
 	__device__ void computeIndivSocialForceRoom(const SocialForceAgentData &myData, const SocialForceAgentData &otherData, double2 &fSum);
 	__device__ void computeForceWithWall(const SocialForceAgentData &dataLocal, obstacleLine &wall, const int &cMass, double2 &fSum);
@@ -209,7 +206,7 @@ public:
 	__device__ void chooseNewGoal(const double2 &newLoc, double epsilon, double2 &newGoal);
 	__device__ void step();
 	__device__ void init(SocialForceClone* c, int idx);
-	__device__ void initNewClone(SocialForceAgent *agent, SocialForceClone *clone);
+	__device__ void initNewClone(SocialForceAgent *agent, SocialForceClone *clone, int lastNum);
 };
 
 extern "C"
@@ -267,8 +264,6 @@ public:
 	curandState *rState;
 	AgentPool *ap, *apHost;
 	SocialForceAgent **context;
-	SocialForceAgent **contextSorted;
-	int *cidStarts, *cidEnds;
 	bool *cloneFlags;
 	int cloneParams[NUM_PARAM];
 	obstacleLine walls[NUM_WALLS];
@@ -305,10 +300,7 @@ public:
 		util::hostAllocCopyToDevice(apHost, &ap);
 		cudaMalloc((void**)&rState, sizeof(curandState) * NUM_CAP);
 		cudaMalloc((void**)&context, sizeof(SocialForceAgent*) * NUM_CAP);
-		cudaMalloc((void**)&contextSorted, sizeof(SocialForceAgent*) * NUM_CAP);
 		cudaMalloc((void**)&cloneFlags, sizeof(bool) * NUM_CAP);
-		cudaMalloc((void**)&cidStarts, sizeof(int) * NUM_CELL * NUM_CELL);
-		cudaMalloc((void**)&cidEnds, sizeof(int) * NUM_CELL * NUM_CELL);
 		cudaMemset(context, 0, sizeof(void*) * NUM_CAP);
 		cudaMemset(cloneFlags, 0, sizeof(bool) * NUM_CAP);
 		
@@ -429,7 +421,7 @@ public:
 		for (int i = 0; i < NUM_PARAM / 4; i++) {
 			double x = (0.1 + 0.8 * distr(randGen)) * ENV_DIM;
 			double y = (0.1 + 0.8 * distr(randGen)) * ENV_DIM;
-			while (isInRectSub(x, y, 0.4 * ENV_DIM, 0.4 * ENV_DIM, 0.6 * ENV_DIM, 0.6 * ENV_DIM)) {
+			while (isInRectSub(x, y, 0.3 * ENV_DIM, 0.3 * ENV_DIM, 0.7 * ENV_DIM, 0.7 * ENV_DIM)) {
 				x = (0.1 + 0.8 * distr(randGen)) * ENV_DIM;
 				y = (0.1 + 0.8 * distr(randGen)) * ENV_DIM;
 			}
@@ -450,7 +442,9 @@ public:
 		for (int i = 1; i < totalClone; i++) {
 			fin >> globalParents[i];
 		}
-		while (!fin.eof()) {
+		int treeLevel;
+		fin >> treeLevel;
+		for (int ll = 0; ll < treeLevel; ll++) {
 			int numEntry;
 			fin >> numEntry;
 			vector<int> myVec;
@@ -503,6 +497,7 @@ public:
 		return EXIT_SUCCESS;
 	}
 	void stepApp(){
+
 		stepCount++;
 
 #if USE_CLONE == 0
@@ -519,7 +514,18 @@ public:
 		}
 		
 #else
-		
+		/*
+		cAll[rootCloneId]->step(stepCount);
+		for (int i = 1; i < cloningTree.size(); i++) {
+			int NCP = cloningTree[i].size();
+			for (int j = 0; j < NCP; j++) {
+				int childCloneId = cloningTree[i][j];
+				int parentCloneId = globalParents[childCloneId];
+				proc(parentCloneId, childCloneId, 0, "g1");
+			}
+		}
+		*/
+
 		cAll[rootCloneId]->step(stepCount);
 		for (int i = 1; i < cloningTree.size(); i++) {
 			int NCP = cloningTree[i].size();
@@ -532,6 +538,7 @@ public:
 					int childCloneId = cloningTree[i][tid];
 					int parentCloneId = globalParents[childCloneId];
 					proc(parentCloneId, childCloneId, 0, "g1");
+					cAll[childCloneId]->parentCloneid = parentCloneId;
 					tid += 8;
 				}
 			}
@@ -539,7 +546,7 @@ public:
 		}
 		
 #endif
-
+		getLastCudaError("step");
 		for (int i = 0; i < totalClone; i++)
 			cAll[i]->swap();
 		cudaDeviceSynchronize();
