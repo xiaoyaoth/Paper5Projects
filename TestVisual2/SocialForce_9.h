@@ -131,13 +131,13 @@ int g_stepCount = 0;
 #define k2 (2.4 * 100000) 
 #define	maxv 3
 
-#define NUM_CAP 1024
+#define NUM_CAP 256
 #define NUM_PARAM 64
 #define NUM_STEP 500
 #define NUM_GOAL 3
-#define ENV_DIM 256
+#define ENV_DIM 64
 #define NUM_CELL 16
-#define CELL_DIM 16
+#define CELL_DIM 4
 #define RADIUS_I 6
 
 #define NUM_WALLS 12
@@ -648,7 +648,7 @@ public:
 	int initSimClone() {
 		srand(0);
 		ifstream fin;
-		fin.open("../TestVisual2/cloningTree_27.txt", ios::in);
+		fin.open("../TestVisual2/exp5CloneTree.txt", ios::in);
 
 		fin >> totalClone;
 

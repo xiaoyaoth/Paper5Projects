@@ -781,7 +781,7 @@ public:
 		srand(0);
 
 		ifstream fin;
-		fin.open("../TestVisual2/exp3CloneTree3.txt", ios::in);
+		fin.open("../TestVisual2/exp3CloneTree6.txt", ios::in);
 		fin >> totalClone;
 
 		cAll = new SocialForceClone*[totalClone];
